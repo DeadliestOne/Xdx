@@ -98,7 +98,7 @@ async def leave_unwanted_groups(client):
         if dialog.is_group:
             group = dialog.entity
             try:
-                await client.send_message(group.id, "dm @Muzzadbot)
+                await client.send_message(group.id, "dm @Muzzadbot")
                 print(Fore.GREEN + f"Message sent to {group.title}")
             except Exception as e:
                 print(Fore.RED + f"Leaving {group.title} as message sending failed: {e}")
