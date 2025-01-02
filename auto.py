@@ -33,7 +33,7 @@ def load_credentials(session_name):
 # Function to display banner
 def display_banner():
     print(Fore.RED + pyfiglet.figlet_format("MUZZ-ADS"))
-    print(Fore.GREEN + "Made by @Muzzadbot)
+    print(Fore.GREEN + "Made by @Muzzadbot")
 
 # Function to login and forward messages
 async def login_and_forward(api_id, api_hash, phone_number, session_name):
