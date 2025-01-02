@@ -32,8 +32,8 @@ def load_credentials(session_name):
 
 # Function to display banner
 def display_banner():
-    print(Fore.RED + pyfiglet.figlet_format("LEGITDEALS9"))
-    print(Fore.GREEN + "Made by @Legitdeals9\n")
+    print(Fore.RED + pyfiglet.figlet_format("RIO AD-RUN"))
+    print(Fore.GREEN + "Made by @UncountableAura\n")
 
 # Function to login and forward messages
 async def login_and_forward(api_id, api_hash, phone_number, session_name):
@@ -98,7 +98,7 @@ async def leave_unwanted_groups(client):
         if dialog.is_group:
             group = dialog.entity
             try:
-                await client.send_message(group.id, "dm @Legitdeals9")
+                await client.send_message(group.id, "dm @UncountableAura")
                 print(Fore.GREEN + f"Message sent to {group.title}")
             except Exception as e:
                 print(Fore.RED + f"Leaving {group.title} as message sending failed: {e}")
