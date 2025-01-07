@@ -1,39 +1,37 @@
-import string
-import itertools
-from telethon import TelegramClient, events
-import asyncio
+import requests
+import re
 
-# Replace these with your own values
-api_id = 'YOUR_API_ID'
-api_hash = 'YOUR_API_HASH'
-phone_number = 'YOUR_PHONE_NUMBER'
+def extract_upi_info(upi_id):
+    # Validate UPI ID format
+    upi_pattern = r'^[a-zA-Z0-9.-]{2,256}@[a-zA-Z][a-zA-Z]{2,64}$'
+    if not re.match(upi_pattern, upi_id):
+        return "Invalid UPI ID format"
 
-async def check_username(client, username):
+    # Extract handle from UPI ID
+    handle = upi_id.split('@')[1]
+
+    # API endpoint for UPI verification
+    url = f"https://ifsc.razorpay.com/upi/{handle}"
+
     try:
-        result = await client(functions.account.CheckUsernameRequest(username=username))
-        return result
-    except Exception as e:
-        print(f"Error checking username {username}: {str(e)}")
-        return False
+        response = requests.get(url)
+        if response.status_code == 200:
+            data = response.json()
+            return {
+                "UPI ID": upi_id,
+                "Bank Name": data.get("BANK", "N/A"),
+                "IFSC Code": data.get("IFSC", "N/A"),
+                "Address": data.get("ADDRESS", "N/A"),
+                "City": data.get("CITY", "N/A"),
+                "State": data.get("STATE", "N/A"),
+                "PSP": data.get("psp", "N/A")
+            }
+        else:
+            return "Unable to fetch information for the given UPI ID"
+    except requests.exceptions.RequestException:
+        return "Error occurred while fetching information"
 
-async def find_usernames():
-    client = TelegramClient('session', api_id, api_hash)
-    await client.start(phone=phone_number)
-
-    characters = string.ascii_lowercase + string.digits
-    count = 0
-
-    for username in itertools.product(characters, repeat=5):
-        username = ''.join(username)
-        is_available = await check_username(client, username)
-        
-        if is_available:
-            print(f"Available username: {username}")
-            count += 1
-            if count >= 5:
-                break
-
-    await client.disconnect()
-
-if __name__ == "__main__":
-    asyncio.run(find_usernames())
+# Example usage
+upi_id = "example@ybl"
+result = extract_upi_info(upi_id)
+print(result)
