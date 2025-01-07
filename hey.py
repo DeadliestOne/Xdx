@@ -32,6 +32,6 @@ def extract_upi_info(upi_id):
         return "Error occurred while fetching information"
 
 # Example usage
-upi_id = "dhruvx44@ibl"
+upi_id = "Anirban89@axl"
 result = extract_upi_info(upi_id)
 print(result)
