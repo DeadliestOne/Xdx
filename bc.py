@@ -13,9 +13,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Telegram API credentials
-API_ID = os.getenv('26416419')
-API_HASH = os.getenv('c109c77f5823c847b1aeb7fbd4990cc4')
-BOT_TOKEN = os.getenv('7271656197:AAEakRafQypDQ6nYms0MCZSC3iNFntfNw3k')
+API_ID = os.getenv('API_ID' ,'26416419')
+API_HASH = os.getenv('API_HASH' ,'c109c77f5823c847b1aeb7fbd4990cc4')
+BOT_TOKEN = os.getenv('BOT_TOKEN' ,'7271656197:AAEakRafQypDQ6nYms0MCZSC3iNFntfNw3k')
 
 # Initialize the client
 client = TelegramClient('auto_broadcast_bot', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
