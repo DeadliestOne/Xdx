@@ -10,9 +10,9 @@ from colorama import init, Fore
 init(autoreset=True)
 
 # Constants
-API_ID = "YOUR_API_ID"  # Replace with your API ID
-API_HASH = "YOUR_API_HASH"  # Replace with your API Hash
-BOT_TOKEN = "YOUR_BOT_TOKEN"  # Replace with your bot token
+API_ID = "26416419"  # Replace with your API ID
+API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"  # Replace with your API Hash
+BOT_TOKEN = "7880833796:AAF6YV4ABd84IrOKk_E3N-oL4Yh5RsN2X00"  # Replace with your bot token
 
 CREDENTIALS_FOLDER = 'sessions'
 
