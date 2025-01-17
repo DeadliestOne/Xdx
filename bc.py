@@ -36,7 +36,7 @@ def load_credentials(session_name):
     return {}
 
 # Initialize the bot client (bot specific actions)
-bot = TelegramClient('bot', API_ID=USER_API_ID, API_HASH=USER_API_HASH).start(bot_token=BOT_API_TOKEN)
+bot = TelegramClient('bot', API_ID=26416419, API_HASH=c109c77f5823c847b1aeb7fbd4990cc4).start(bot_token=7226701592:AAEqPN7bjyECFSucMld7JMtaQ5hC_nCY_JQ)
 
 # Temporary storage for user inputs
 user_states = {}
