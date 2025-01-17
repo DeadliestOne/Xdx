@@ -38,31 +38,24 @@ def load_credentials(session_name):
     return {}
 
 def delete_session(session_name):
-    retry_attempts = 5  # Number of retry attempts
-    timeout = 10  # Timeout in seconds for each attempt
     session_file = os.path.join(CREDENTIALS_FOLDER, f"{session_name}.session")
 
-    for _ in range(retry_attempts):
-        try:
-            # Use WAL mode to improve concurrency in SQLite
-            conn = sqlite3.connect('your_database.db')
-            conn.execute('PRAGMA journal_mode=WAL')  # Enable Write-Ahead Logging (WAL)
-            cursor = conn.cursor()
+    # Open SQLite connection with `check_same_thread=False` to allow multi-threading access
+    conn = sqlite3.connect('your_database.db', check_same_thread=False)
+    cursor = conn.cursor()
 
-            # Attempt to delete session in the database
-            cursor.execute(f'DELETE FROM sessions WHERE session_name = "{session_name}"')
-            conn.commit()  # Commit changes to the database
+    try:
+        # Attempt to delete session from the database
+        cursor.execute(f'DELETE FROM sessions WHERE session_name = "{session_name}"')
+        conn.commit()
 
-            if os.path.exists(session_file):
-                os.remove(session_file)  # Remove the session file if exists
-            print("Session deleted successfully.")
-            conn.close()  # Close the connection after operation
-            return  # Exit the function if successful
-        except sqlite3.OperationalError as e:
-            print(f"Error: {e}. Retrying...")
-            conn.close()  # Ensure connection is closed even on error
-            time.sleep(2)  # Wait before retrying
-    print("Failed to delete session after multiple attempts.")  # Failed after retries
+        if os.path.exists(session_file):
+            os.remove(session_file)  # Remove session file if exists
+        print("Session deleted successfully.")
+    except sqlite3.OperationalError as e:
+        print(f"Error: {e}. This may be a temporary locking issue.")
+    finally:
+        conn.close()  # Ensure the connection is always closed
 
 # Initialize the bot client (correct bot initialization)
 bot = TelegramClient('bot_session', api_id=USER_API_ID, api_hash=USER_API_HASH)
