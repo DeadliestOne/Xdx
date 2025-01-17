@@ -14,7 +14,7 @@ USER_API_ID = "26416419"  # Replace with your API ID
 USER_API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"  # Replace with your API Hash
 
 # Constants for bot session
-BOT_API_TOKEN = "7226701592:AAEqPN7bjyECFSucMld7JMtaQ5hC_nCY_JQ"  #  # Replace with your bot token
+BOT_API_TOKEN = "7226701592:AAEqPN7bjyECFSucMld7JMtaQ5hC_nCY_JQ"  # Replace with your bot token
 
 CREDENTIALS_FOLDER = 'sessions'
 
@@ -60,6 +60,20 @@ async def host_command(event):
 
     user_states[user_id] = {'step': 'awaiting_credentials'}
     await event.reply("Please send your API ID, API Hash, and phone number in the following format:\n`API_ID|API_HASH|PHONE_NUMBER`", parse_mode='markdown')
+
+# Command: /unauthorize
+@bot.on(events.NewMessage(pattern='/unauthorize'))
+async def unauthorize_command(event):
+    user_id = event.sender_id
+    session_name = f'session_{user_id}'
+
+    # Check if the session exists
+    if os.path.exists(os.path.join(CREDENTIALS_FOLDER, f"{session_name}.session")):
+        # Delete the session file to unauthorize the account
+        delete_session(session_name)
+        await event.reply("Account has been successfully unauthenticated and session deleted.")
+    else:
+        await event.reply("No active session found for your account.")
 
 @bot.on(events.NewMessage)
 async def process_user_input(event):
