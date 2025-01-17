@@ -3,16 +3,16 @@ import json
 import asyncio
 from telethon import TelegramClient, events
 from telethon.errors import SessionPasswordNeededError
-from telethon.tl.functions.channels import LeaveChannelRequest
+from telethon.tl.functions.messages import ForwardMessages
 from colorama import init, Fore
 
 # Initialize colorama for colored output
 init(autoreset=True)
 
 # Constants
-API_ID = "26416419"  # Replace with your API ID
-API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"  # Replace with your API Hash
-BOT_TOKEN = "7880833796:AAF6YV4ABd84IrOKk_E3N-oL4Yh5RsN2X00"   # Replace with your bot token
+API_ID = "29305828"  # Replace with your API ID
+API_HASH = "583601896f93cf2c75a076c124f7b255"  # Replace with your API Hash
+BOT_TOKEN = "7880833796:AAF6YV4ABd84IrOKk_E3N-oL4Yh5RsN2X00"  # Replace with your bot token
 
 CREDENTIALS_FOLDER = 'sessions'
 
@@ -105,35 +105,35 @@ async def process_user_input(event):
                 'phone_number': phone_number,
             })
             await event.reply("Account successfully hosted!")
+            # Start forwarding ads to groups
+            await forward_ads_to_groups(client)
             await client.disconnect()
         except Exception as e:
             await event.reply(f"Error during login with OTP: {e}")
         finally:
             del user_states[user_id]
 
-# Command: /leave
-@bot.on(events.NewMessage(pattern='/leave'))
-async def leave_groups(event):
-    session_name = f'session_{event.sender_id}'
-    credentials = load_credentials(session_name)
+async def forward_ads_to_groups(client):
+    # Select the message to forward (e.g., a message in 'Saved Messages')
+    saved_messages_peer = await client.get_input_entity('me')
+    history = await client.get_messages(saved_messages_peer, limit=1)
 
-    if not credentials:
-        await event.reply("No session found for your account. Please use /host first.")
+    if not history:
+        print("No messages found in 'Saved Messages' to forward.")
         return
 
-    client = TelegramClient(session_name, credentials['api_id'], credentials['api_hash'])
-    await client.connect()
+    ad_message = history[0]
 
+    # Loop through the user's groups and forward the ad
     async for dialog in client.iter_dialogs():
         if dialog.is_group:
+            group = dialog.entity
             try:
-                await client(LeaveChannelRequest(dialog.entity))
-                print(Fore.GREEN + f"Left group: {dialog.name}")
+                await client.forward_messages(group, ad_message)
+                print(Fore.GREEN + f"Ad forwarded to {group.title}")
             except Exception as e:
-                print(Fore.RED + f"Failed to leave group {dialog.name}: {e}")
-
-    await client.disconnect()
-    await event.reply("Left all groups where applicable.")
+                print(Fore.RED + f"Failed to forward ad to {group.title}: {str(e)}")
+            await asyncio.sleep(2)  # Delay to avoid spam
 
 # Run the bot
 print("Bot is running...")
