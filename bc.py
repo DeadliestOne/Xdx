@@ -91,7 +91,7 @@ async def process_input(event):
     elif state['step'] == 'choose_action':
         choice = event.text.strip()
         if choice == '1':
-            await event.reply("Do you want to forward 1 or 2 messages? Reply with 1 or 2.")
+            await event.reply("How many messages would you like to forward per group (1-5)?")
             state['step'] = 'awaiting_message_count'
         elif choice == '2':
             try:
@@ -104,27 +104,21 @@ async def process_input(event):
             await event.reply("Invalid choice. Reply with 1 or 2.")
 
     elif state['step'] == 'awaiting_message_count':
-        message_count = event.text.strip()
-        if message_count not in ['1', '2']:
-            await event.reply("Invalid input. Please reply with 1 or 2.")
-            return
-        state['message_count'] = int(message_count)
-        await event.reply("How many rounds of ads would you like to run?")
-        state['step'] = 'awaiting_rounds'
+        try:
+            message_count = int(event.text.strip())
+            if message_count < 1 or message_count > 5:
+                await event.reply("Please choose a number between 1 and 5.")
+                return
+            state['message_count'] = message_count
+            await event.reply("How many rounds of ads would you like to run?")
+            state['step'] = 'awaiting_rounds'
+        except ValueError:
+            await event.reply("Please provide a valid number.")
 
     elif state['step'] == 'awaiting_rounds':
         try:
             rounds = int(event.text.strip())
             state['rounds'] = rounds
-            await event.reply("How many messages to forward per group per round?")
-            state['step'] = 'awaiting_forward_count'
-        except ValueError:
-            await event.reply("Please provide a valid number.")
-
-    elif state['step'] == 'awaiting_forward_count':
-        try:
-            forward_count = int(event.text.strip())
-            state['forward_count'] = forward_count
             await event.reply("Enter delay (in seconds) between rounds.")
             state['step'] = 'awaiting_delay'
         except ValueError:
@@ -134,13 +128,13 @@ async def process_input(event):
         try:
             delay = int(event.text.strip())
             state['delay'] = delay
-            await event.reply("Starting ad forwarding process... One More Thing This Is A Script Which Was Maded By @UncountableAura For 10$ Only")
-            await forward_ads(state['client'], state['message_count'], state['rounds'], state['forward_count'], state['delay'])
+            await event.reply("Starting ad forwarding process...")
+            await forward_ads(state['client'], state['message_count'], state['rounds'], state['delay'])
             del user_states[user_id]
         except ValueError:
             await event.reply("Please provide a valid number.")
 
-async def forward_ads(client, message_count, rounds, forward_count, delay):
+async def forward_ads(client, message_count, rounds, delay):
     """Forwards ads to all groups."""
     await client.connect()
     saved_messages = await client.get_messages('me', limit=message_count)
@@ -154,13 +148,12 @@ async def forward_ads(client, message_count, rounds, forward_count, delay):
             if dialog.is_group:
                 group = dialog.entity
                 for message in saved_messages:
-                    for _ in range(forward_count):
-                        try:
-                            await client.forward_messages(group.id, message)
-                            print(f"Ad forwarded to {group.title}")
-                        except Exception as e:
-                            print(f"Failed to forward to {group.title}: {e}")
-                        await asyncio.sleep(1)
+                    try:
+                        await client.forward_messages(group.id, message)
+                        print(f"Ad forwarded to {group.title}")
+                    except Exception as e:
+                        print(f"Failed to forward to {group.title}: {e}")
+                    await asyncio.sleep(1)
         if round_num < rounds:
             await asyncio.sleep(delay)
 
