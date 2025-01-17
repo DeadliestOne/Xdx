@@ -11,7 +11,7 @@ init(autoreset=True)
 # Replace with your API credentials
 USER_API_ID = "26416419"
 USER_API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"
-BOT_API_TOKEN = "7226701592:AAHSQb_ceVqps81-DhXfyakVg4D0Jpp_3Og"
+BOT_API_TOKEN = "7226701592:AAE7AGWAU0BXgw-PmLfhgarpCT4-2wrBdwE"
 
 CREDENTIALS_FOLDER = 'sessions'
 
