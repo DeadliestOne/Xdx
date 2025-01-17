@@ -31,7 +31,6 @@ async def start(event):
     """Welcome message for users."""
     await event.reply("Welcome! Use the following commands:\n\n"
                       "/host - Host a new Telegram account\n"
-                      "/addaccount - Add another account\n"
                       "/forward - Start forwarding ads\n"
                       "/accounts - List hosted accounts\n"
                       "/remove - Remove a hosted account")
@@ -95,6 +94,10 @@ async def process_input(event):
                 await client.disconnect()
                 await event.reply(f"Account {phone_number} is already authorized and hosted!")
                 del user_states[user_id]  # Clear user state after completing hosting
+
+                # Ask for the next account info
+                await event.reply("Send the next account's details in the format:\n`API_ID|API_HASH|PHONE_NUMBER`")
+
         except Exception as e:
             await event.reply(f"Error: {e}")
             del user_states[user_id]  # Clear user state if error occurs
@@ -110,6 +113,9 @@ async def process_input(event):
             accounts[phone_number] = client
             await event.reply(f"Account {phone_number} successfully hosted! Use /forward to start forwarding ads.")
             del user_states[user_id]  # Clear user state after OTP verification
+
+            # Ask for the next account info
+            await event.reply("Send the next account's details in the format:\n`API_ID|API_HASH|PHONE_NUMBER`")
         except Exception as e:
             await event.reply(f"Error: {e}")
             del user_states[user_id]  # Clear user state if error occurs
