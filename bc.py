@@ -26,7 +26,6 @@ bot = TelegramClient('bot_session', USER_API_ID, USER_API_HASH)
 user_states = {}
 accounts = {}  # Hosted accounts
 
-
 @bot.on(events.NewMessage(pattern='/start'))
 async def start(event):
     """Welcome message for users."""
@@ -37,7 +36,7 @@ async def start(event):
                       "/accounts - List hosted accounts\n"
                       "/remove - Remove a hosted account")
 
-
+# /host command: Starts the hosting process for a new account
 @bot.on(events.NewMessage(pattern='/host|/addaccount'))
 async def host_command(event):
     """Starts the hosting process for a new account."""
@@ -49,6 +48,21 @@ async def host_command(event):
     user_states[user_id] = {'step': 'awaiting_credentials'}
     await event.reply("Send your API ID, API Hash, and phone number in the format:\n`API_ID|API_HASH|PHONE_NUMBER`")
 
+# /forward command: Starts the ad forwarding process
+@bot.on(events.NewMessage(pattern='/forward'))
+async def forward_command(event):
+    """Starts the ad forwarding process."""
+    user_id = event.sender_id
+    if user_id in user_states:
+        await event.reply("You already have an active process. Please complete it before starting a new one.")
+        return
+
+    if not accounts:
+        await event.reply("No accounts are hosted. Use /host or /addaccount to add accounts.")
+        return
+
+    user_states[user_id] = {'step': 'awaiting_message_count'}
+    await event.reply("How many messages would you like to forward per group (1-5)?")
 
 @bot.on(events.NewMessage)
 async def process_input(event):
@@ -59,7 +73,7 @@ async def process_input(event):
 
     state = user_states[user_id]
 
-    # Hosting Credentials
+    # Handling user credentials for hosting a new account
     if state['step'] == 'awaiting_credentials':
         data = event.text.split('|')
         if len(data) != 3:
@@ -80,10 +94,10 @@ async def process_input(event):
                 accounts[phone_number] = client
                 await client.disconnect()
                 await event.reply(f"Account {phone_number} is already authorized and hosted!")
-                del user_states[user_id]  # Reset user state after process is done
+                del user_states[user_id]  # Clear user state after completing hosting
         except Exception as e:
             await event.reply(f"Error: {e}")
-            del user_states[user_id]  # Reset user state in case of error
+            del user_states[user_id]  # Clear user state if error occurs
 
     # OTP Verification
     elif state['step'] == 'awaiting_otp':
@@ -95,38 +109,12 @@ async def process_input(event):
             await client.sign_in(phone_number, otp)
             accounts[phone_number] = client
             await event.reply(f"Account {phone_number} successfully hosted! Use /forward to start forwarding ads.")
-            del user_states[user_id]  # Reset user state after successful hosting
+            del user_states[user_id]  # Clear user state after OTP verification
         except Exception as e:
             await event.reply(f"Error: {e}")
-            del user_states[user_id]  # Reset user state in case of error
+            del user_states[user_id]  # Clear user state if error occurs
 
-
-@bot.on(events.NewMessage(pattern='/forward'))
-async def forward_command(event):
-    """Starts the ad forwarding process."""
-    if not accounts:
-        await event.reply("No accounts are hosted. Use /host or /addaccount to add accounts.")
-        return
-
-    user_id = event.sender_id
-    if user_id in user_states:
-        await event.reply("You already have an active process. Please complete it before starting a new one.")
-        return
-
-    user_states[user_id] = {'step': 'awaiting_message_count'}
-    await event.reply("How many messages would you like to forward per group (1-5)?")
-
-
-@bot.on(events.NewMessage)
-async def process_forwarding(event):
-    """Handles forwarding process steps (message count, rounds, delay)."""
-    user_id = event.sender_id
-    if user_id not in user_states:
-        return
-
-    state = user_states[user_id]
-
-    # Step 1: Message Count
+    # Handling forwarding process steps (message count, rounds, delay)
     if state['step'] == 'awaiting_message_count':
         try:
             message_count = int(event.text.strip())
@@ -139,7 +127,6 @@ async def process_forwarding(event):
         except ValueError:
             await event.reply("Please provide a valid number.")
 
-    # Step 2: Rounds
     elif state['step'] == 'awaiting_rounds':
         try:
             rounds = int(event.text.strip())
@@ -149,17 +136,15 @@ async def process_forwarding(event):
         except ValueError:
             await event.reply("Please provide a valid number.")
 
-    # Step 3: Delay
     elif state['step'] == 'awaiting_delay':
         try:
             delay = int(event.text.strip())
             state['delay'] = delay
             await event.reply("Starting the ad forwarding process...")
             await forward_ads(state['message_count'], state['rounds'], state['delay'])
-            del user_states[user_id]  # Reset user state after forwarding process is done
+            del user_states[user_id]  # Clear user state after completing forwarding
         except ValueError:
             await event.reply("Please provide a valid number.")
-
 
 async def forward_ads(message_count, rounds, delay):
     """Forwards ads to all groups for all hosted accounts."""
@@ -189,7 +174,6 @@ async def forward_ads(message_count, rounds, delay):
             if round_num < rounds:
                 print(f"Waiting {delay} seconds before the next round...")
                 await asyncio.sleep(delay)
-
 
 print("Bot is running...")
 bot.start(bot_token=BOT_API_TOKEN)
