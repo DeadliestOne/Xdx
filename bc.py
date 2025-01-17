@@ -63,8 +63,11 @@ async def forward_command(event):
         await event.reply("No accounts are hosted. Use /host or /addaccount to add accounts.")
         return
 
-    user_states[user_id] = {'step': 'awaiting_message_count'}
-    await event.reply("How many messages would you like to forward per group (1-5)?")
+    # Display list of hosted accounts
+    account_list = '\n'.join([f"{i+1}. {phone}" for i, phone in enumerate(accounts.keys())])
+    await event.reply(f"Choose an account to forward ads from:\n{account_list}\nReply with the number of the account.")
+
+    user_states[user_id] = {'step': 'awaiting_account_choice'}
 
 @bot.on(events.NewMessage)
 async def process_input(event):
@@ -123,8 +126,21 @@ async def process_input(event):
             await event.reply(f"Error: {e}")
             del user_states[user_id]  # Clear user state if error occurs
 
-    # Handling forwarding process steps (message count, rounds, delay)
-    if state['step'] == 'awaiting_message_count':
+    # Handling forwarding process steps (account choice, message count, rounds, delay)
+    if state['step'] == 'awaiting_account_choice':
+        try:
+            account_choice = int(event.text.strip()) - 1
+            if 0 <= account_choice < len(accounts):
+                selected_account = list(accounts.keys())[account_choice]
+                state['selected_account'] = selected_account
+                state['step'] = 'awaiting_message_count'
+                await event.reply(f"Selected account {selected_account}. How many messages would you like to forward per group (1-5)?")
+            else:
+                await event.reply("Please choose a valid account number.")
+        except ValueError:
+            await event.reply("Please provide a valid number.")
+
+    elif state['step'] == 'awaiting_message_count':
         try:
             message_count = int(event.text.strip())
             if 1 <= message_count <= 5:
@@ -150,40 +166,41 @@ async def process_input(event):
             delay = int(event.text.strip())
             state['delay'] = delay
             await event.reply("Starting the ad forwarding process...")
-            await forward_ads(state['message_count'], state['rounds'], state['delay'])
+            await forward_ads(state['message_count'], state['rounds'], state['delay'], state['selected_account'])
             del user_states[user_id]  # Clear user state after completing forwarding
         except ValueError:
             await event.reply("Please provide a valid number.")
 
-async def forward_ads(message_count, rounds, delay):
-    """Forwards ads to all groups for all hosted accounts."""
-    for phone_number, client in accounts.items():
-        await client.connect()
-        saved_messages = await client.get_messages('me', limit=message_count)
-        if not saved_messages or len(saved_messages) < message_count:
-            print(f"Not enough messages in 'Saved Messages' for account {phone_number}.")
-            continue
+async def forward_ads(message_count, rounds, delay, selected_account):
+    """Forwards ads to all groups for the selected account."""
+    client = accounts[selected_account]
+    await client.connect()
+    saved_messages = await client.get_messages('me', limit=message_count)
+    if not saved_messages or len(saved_messages) < message_count:
+        print(f"Not enough messages in 'Saved Messages' for account {selected_account}.")
+        return
 
-        for round_num in range(1, rounds + 1):
-            print(f"Round {round_num} for account {phone_number}...")
-            async for dialog in client.iter_dialogs():
-                if dialog.is_group:
-                    group = dialog.entity
-                    for message in saved_messages:
-                        try:
-                            await client.forward_messages(group.id, message)
-                            print(f"Ad forwarded to {group.title} from account {phone_number}.")
-                            # Random delay between messages
-                            await asyncio.sleep(random.uniform(2, 4))
-                        except FloodWaitError as e:
-                            print(f"Rate limited. Waiting for {e.seconds} seconds.")
-                            await asyncio.sleep(e.seconds)
-                        except Exception as e:
-                            print(f"Failed to forward to {group.title}: {e}")
-            if round_num < rounds:
-                print(f"Waiting {delay} seconds before the next round...")
-                await asyncio.sleep(delay)
+    for round_num in range(1, rounds + 1):
+        print(f"Round {round_num} for account {selected_account}...")
+        async for dialog in client.iter_dialogs():
+            if dialog.is_group:
+                group = dialog.entity
+                for message in saved_messages:
+                    try:
+                        await client.forward_messages(group.id, message)
+                        print(f"Ad forwarded to {group.title} from account {selected_account}.")
+                        # Random delay between messages
+                        await asyncio.sleep(random.uniform(2, 4))
+                    except FloodWaitError as e:
+                        print(f"Rate limited. Waiting for {e.seconds} seconds.")
+                        await asyncio.sleep(e.seconds)
+                    except Exception as e:
+                        print(f"Failed to forward to {group.title}: {e}")
+        if round_num < rounds:
+            print(f"Waiting {delay} seconds before the next round...")
+            await asyncio.sleep(delay)
 
+# Run the bot
 print("Bot is running...")
 bot.start(bot_token=BOT_API_TOKEN)
 bot.run_until_disconnected()
