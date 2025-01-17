@@ -9,12 +9,11 @@ from colorama import init, Fore
 # Initialize colorama for colored output
 init(autoreset=True)
 
-# Constants for user session
 USER_API_ID = "26416419"  # Replace with your API ID
 USER_API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"  # Replace with your API Hash
 
 # Constants for bot session
-BOT_API_TOKEN = "7226701592:AAEqPN7bjyECFSucMld7JMtaQ5hC_nCY_JQ"  # Replace with your bot token
+BOT_API_TOKEN = "7226701592:AAEqPN7bjyECFSucMld7JMtaQ5hC_nCY_JQ"  #  # Replace with your bot token
 
 CREDENTIALS_FOLDER = 'sessions'
 
@@ -36,9 +35,9 @@ def load_credentials(session_name):
     return {}
 
 # Initialize the bot client (correct bot initialization)
-bot = TelegramClient('bot_session').start(bot_token=BOT_API_TOKEN)
+bot = TelegramClient('bot_session', bot_token=BOT_API_TOKEN)
 
-# Initialize the user client
+# Initialize the user client (needed for hosting and interacting with users)
 user_client = TelegramClient('user_session', USER_API_ID, USER_API_HASH)
 
 # Temporary storage for user inputs
