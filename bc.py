@@ -1,10 +1,12 @@
 import os
 import json
 import asyncio
+import sqlite3
 from telethon import TelegramClient, events
 from telethon.errors import SessionPasswordNeededError
 from telethon.tl.functions.channels import LeaveChannelRequest
 from colorama import init, Fore
+import time
 
 # Initialize colorama for colored output
 init(autoreset=True)
@@ -36,9 +38,25 @@ def load_credentials(session_name):
     return {}
 
 def delete_session(session_name):
+    retry_attempts = 5  # Number of retry attempts
+    timeout = 10  # Timeout in seconds for each attempt
     session_file = os.path.join(CREDENTIALS_FOLDER, f"{session_name}.session")
-    if os.path.exists(session_file):
-        os.remove(session_file)
+
+    for _ in range(retry_attempts):
+        try:
+            # Open the connection with a longer timeout
+            with sqlite3.connect('your_database.db', timeout=timeout) as conn:
+                cursor = conn.cursor()
+                cursor.execute(f'DELETE FROM sessions WHERE session_name = "{session_name}"')
+                conn.commit()  # Commit changes to the database
+            if os.path.exists(session_file):
+                os.remove(session_file)  # Remove the session file if exists
+            print("Session deleted successfully.")
+            return  # If successful, exit the function
+        except sqlite3.OperationalError as e:
+            print(f"Error: {e}. Retrying...")
+            time.sleep(2)  # Wait before retrying
+    print("Failed to delete session after multiple attempts.")  # Failed after retries
 
 # Initialize the bot client (correct bot initialization)
 bot = TelegramClient('bot_session', api_id=USER_API_ID, api_hash=USER_API_HASH)
