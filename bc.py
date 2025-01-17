@@ -3,15 +3,16 @@ import json
 import asyncio
 from telethon import TelegramClient, events
 from telethon.errors import SessionPasswordNeededError
+from telethon.tl.functions.channels import LeaveChannelRequest
 from colorama import init, Fore
 
 # Initialize colorama for colored output
 init(autoreset=True)
 
 # Constants
-API_ID = "29305828"  # Replace with your API ID
-API_HASH = "583601896f93cf2c75a076c124f7b255"  # Replace with your API Hash
-BOT_TOKEN = "7880833796:AAF6YV4ABd84IrOKk_E3N-oL4Yh5RsN2X00"  # Replace with your bot token
+API_ID = "26416419"  # Replace with your API ID
+API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"  # Replace with your API Hash
+BOT_TOKEN = "7226701592:AAEqPN7bjyECFSucMld7JMtaQ5hC_nCY_JQ"  # Replace with your bot token
 
 CREDENTIALS_FOLDER = 'sessions'
 
@@ -104,15 +105,57 @@ async def process_user_input(event):
                 'phone_number': phone_number,
             })
             await event.reply("Account successfully hosted!")
-            # Start forwarding ads to groups
-            await forward_ads_to_groups(client)
-            await client.disconnect()
+            # Ask the user what they want to do
+            await event.reply("What would you like to do next?\n1. Run ads in groups\n2. Leave groups\nPlease reply with 1 or 2.")
+            state.update({'step': 'choose_action'})
         except Exception as e:
             await event.reply(f"Error during login with OTP: {e}")
         finally:
             del user_states[user_id]
 
-async def forward_ads_to_groups(client):
+    elif state['step'] == 'choose_action':
+        choice = event.text.strip()
+        if choice == '1':
+            state['action'] = 'run_ads'
+            await event.reply("How many rounds of ads would you like to run? Please provide a number.")
+            state['step'] = 'awaiting_rounds'
+        elif choice == '2':
+            state['action'] = 'leave_groups'
+            await event.reply("I will now proceed to leave groups.")
+            await leave_unwanted_groups(state['client'])
+            del user_states[user_id]
+        else:
+            await event.reply("Invalid choice! Please reply with 1 to run ads or 2 to leave groups.")
+
+    elif state['step'] == 'awaiting_rounds':
+        try:
+            rounds = int(event.text.strip())
+            state['rounds'] = rounds
+            await event.reply("How many times would you like to forward the ad to each group per round? Please provide a number.")
+            state['step'] = 'awaiting_forward_count'
+        except ValueError:
+            await event.reply("Please enter a valid number for rounds.")
+
+    elif state['step'] == 'awaiting_forward_count':
+        try:
+            forward_count = int(event.text.strip())
+            state['forward_count'] = forward_count
+            await event.reply("What delay (in seconds) would you like between each round of ads?")
+            state['step'] = 'awaiting_delay'
+        except ValueError:
+            await event.reply("Please enter a valid number for forward count.")
+
+    elif state['step'] == 'awaiting_delay':
+        try:
+            delay = int(event.text.strip())
+            state['delay'] = delay
+            await event.reply(f"Starting to run ads in {state['rounds']} rounds, forwarding {state['forward_count']} times per group, with {state['delay']} seconds delay between each round.")
+            await run_ads_in_groups(state['client'], state['rounds'], state['forward_count'], state['delay'])
+            del user_states[user_id]
+        except ValueError:
+            await event.reply("Please enter a valid number for delay.")
+
+async def run_ads_in_groups(client, rounds, forward_count, delay):
     # Select the message to forward (e.g., a message in 'Saved Messages')
     saved_messages_peer = await client.get_input_entity('me')
     history = await client.get_messages(saved_messages_peer, limit=1)
@@ -123,17 +166,36 @@ async def forward_ads_to_groups(client):
 
     ad_message = history[0]
 
-    # Loop through the user's groups and forward the ad
+    for round_num in range(1, rounds + 1):
+        print(f"Starting round {round_num}...")
+        # Loop through the user's groups and forward the ad multiple times
+        async for dialog in client.iter_dialogs():
+            if dialog.is_group:
+                group = dialog.entity
+                for _ in range(forward_count):
+                    try:
+                        # Forward the message to the group
+                        await client.forward_messages(group.id, ad_message)
+                        print(Fore.GREEN + f"Ad forwarded to {group.title}")
+                    except Exception as e:
+                        print(Fore.RED + f"Failed to forward ad to {group.title}: {str(e)}")
+                    await asyncio.sleep(1)  # Delay between forwards to avoid spam
+        if round_num < rounds:
+            print(f"Delaying for {delay} seconds before the next round.")
+            await asyncio.sleep(delay)
+
+async def leave_unwanted_groups(client):
+    # Loop through the user's groups and leave groups
     async for dialog in client.iter_dialogs():
         if dialog.is_group:
             group = dialog.entity
             try:
-                # Forward the message to the group
-                await client.forward_messages(group.id, ad_message)
-                print(Fore.GREEN + f"Ad forwarded to {group.title}")
+                await client.send_message(group.id, "Leaving this group.")
+                await client(LeaveChannelRequest(group))
+                print(Fore.YELLOW + f"Left group {group.title}")
             except Exception as e:
-                print(Fore.RED + f"Failed to forward ad to {group.title}: {str(e)}")
-            await asyncio.sleep(2)  # Delay to avoid spam
+                print(Fore.RED + f"Failed to leave group {group.title}: {str(e)}")
+            await asyncio.sleep(2)  # Delay to avoid rapid actions
 
 # Run the bot
 print("Bot is running...")
