@@ -41,11 +41,14 @@ async def host_command(event):
     """Starts the hosting process for a new account."""
     user_id = event.sender_id
     if user_id in user_states:
-        await event.reply("You already have an active process. Please complete it before starting a new one.")
-        return
-
-    user_states[user_id] = {'step': 'awaiting_credentials'}
-    await event.reply("Send your API ID, API Hash, and phone number in the format:\n`API_ID|API_HASH|PHONE_NUMBER`")
+        if user_states[user_id].get('step') in ['awaiting_credentials', 'awaiting_otp']:
+            await event.reply("You already have an active process. Please complete it before starting a new one.")
+        else:
+            del user_states[user_id]  # Remove any old process state
+            await event.reply("You can start hosting a new account now.")
+    else:
+        user_states[user_id] = {'step': 'awaiting_credentials'}
+        await event.reply("Send your API ID, API Hash, and phone number in the format:\n`API_ID|API_HASH|PHONE_NUMBER`")
 
 # /forward command: Starts the ad forwarding process
 @bot.on(events.NewMessage(pattern='/forward'))
