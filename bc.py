@@ -1,7 +1,6 @@
 import os
 import json
 import asyncio
-import sqlite3
 from telethon import TelegramClient, events
 from telethon.errors import SessionPasswordNeededError
 from telethon.tl.functions.channels import LeaveChannelRequest
@@ -11,249 +10,99 @@ import time
 # Initialize colorama for colored output
 init(autoreset=True)
 
-# Constants for user session (replace with actual values)
-USER_API_ID = "26416419"  # Replace with your API ID
-USER_API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"  # Replace with your API Hash
-
-# Constants for bot session
-BOT_API_TOKEN = "7226701592:AAEqPN7bjyECFSucMld7JMtaQ5hC_nCY_JQ"  # Replace with your bot token
+# Replace with your own API credentials
+USER_API_ID = "26416419"
+USER_API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"
+BOT_API_TOKEN = "7226701592:AAEqPN7bjyECFSucMld7JMtaQ5hC_nCY_JQ"
 
 CREDENTIALS_FOLDER = 'sessions'
 
-# Create a session folder if it doesn't exist
+# Create sessions folder if it doesn't exist
 if not os.path.exists(CREDENTIALS_FOLDER):
     os.mkdir(CREDENTIALS_FOLDER)
 
-# Helper functions
-def save_credentials(session_name, credentials):
-    path = os.path.join(CREDENTIALS_FOLDER, f"{session_name}.json")
-    with open(path, 'w') as f:
-        json.dump(credentials, f)
+# Initialize Telegram bot
+bot = TelegramClient('bot_session', USER_API_ID, USER_API_HASH)
 
-def load_credentials(session_name):
-    path = os.path.join(CREDENTIALS_FOLDER, f"{session_name}.json")
-    if os.path.exists(path):
-        with open(path, 'r') as f:
-            return json.load(f)
-    return {}
-
-def delete_session(session_name):
-    session_file = os.path.join(CREDENTIALS_FOLDER, f"{session_name}.session")
-
-    # Open SQLite connection with `check_same_thread=False` to allow multi-threading access
-    conn = sqlite3.connect('your_database.db', check_same_thread=False)
-    cursor = conn.cursor()
-
-    try:
-        # Attempt to delete session from the database
-        cursor.execute(f'DELETE FROM sessions WHERE session_name = "{session_name}"')
-        conn.commit()
-
-        if os.path.exists(session_file):
-            os.remove(session_file)  # Remove session file if exists
-        print("Session deleted successfully.")
-    except sqlite3.OperationalError as e:
-        print(f"Error: {e}. This may be a temporary locking issue.")
-    finally:
-        conn.close()  # Ensure the connection is always closed
-
-# Initialize the bot client (correct bot initialization)
-bot = TelegramClient('bot_session', api_id=USER_API_ID, api_hash=USER_API_HASH)
-
-# Initialize the user client (needed for hosting and interacting with users)
-user_client = TelegramClient('user_session', USER_API_ID, USER_API_HASH)
-
-# Temporary storage for user inputs
+# User states to track ongoing processes
 user_states = {}
 
-# Command: /host
 @bot.on(events.NewMessage(pattern='/host'))
 async def host_command(event):
+    """Handles the hosting process."""
     user_id = event.sender_id
-
     if user_id in user_states:
         await event.reply("You already have an active process. Please complete it before starting a new one.")
         return
 
     user_states[user_id] = {'step': 'awaiting_credentials'}
-    await event.reply("Please send your API ID, API Hash, and phone number in the following format:\n`API_ID|API_HASH|PHONE_NUMBER`", parse_mode='markdown')
-
-# Command: /unauthorize
-@bot.on(events.NewMessage(pattern='/unauthorize'))
-async def unauthorize_command(event):
-    user_id = event.sender_id
-    session_name = f'session_{user_id}'
-
-    # Check if the session exists
-    if os.path.exists(os.path.join(CREDENTIALS_FOLDER, f"{session_name}.session")):
-        # Disconnect client and delete the session
-        try:
-            client = TelegramClient(session_name, USER_API_ID, USER_API_HASH)
-            await client.connect()
-            if await client.is_user_authorized():
-                await client.disconnect()
-                delete_session(session_name)
-                await event.reply("Account has been successfully unauthenticated and session deleted.")
-            else:
-                await event.reply("Your account is not authorized.")
-        except Exception as e:
-            await event.reply(f"Error during disconnection: {e}")
-    else:
-        await event.reply("No active session found for your account.")
+    await event.reply("Send your API ID, API Hash, and phone number in the format:\n`API_ID|API_HASH|PHONE_NUMBER`")
 
 @bot.on(events.NewMessage)
-async def process_user_input(event):
+async def process_input(event):
+    """Processes user input and steps."""
     user_id = event.sender_id
 
     if user_id not in user_states:
-        return  # Ignore messages from users who are not in the process
+        return
 
     state = user_states[user_id]
 
     if state['step'] == 'awaiting_credentials':
         data = event.text.split('|')
         if len(data) != 3:
-            await event.reply("Invalid format! Please send data as: `API_ID|API_HASH|PHONE_NUMBER`.")
+            await event.reply("Invalid format. Please send data as:\n`API_ID|API_HASH|PHONE_NUMBER`")
             return
 
         api_id, api_hash, phone_number = data
         session_name = f'session_{user_id}'
-
-        # If session already exists, delete it to force a fresh login process
-        delete_session(session_name)
-
         client = TelegramClient(session_name, api_id, api_hash)
 
         try:
             await client.connect()
-
-            # Check if the user is authorized or not
             if not await client.is_user_authorized():
                 await client.send_code_request(phone_number)
                 state.update({
                     'step': 'awaiting_otp',
                     'client': client,
                     'phone_number': phone_number,
-                    'session_name': session_name,
-                    'api_id': api_id,
-                    'api_hash': api_hash,
                 })
-                await event.reply("OTP sent to your phone. Please reply with the OTP.")
+                await event.reply("OTP sent to your phone. Reply with the OTP.")
             else:
                 await client.disconnect()
                 await event.reply("Account is already authorized!")
                 del user_states[user_id]
         except Exception as e:
-            await event.reply(f"Error during login: {e}")
+            await event.reply(f"Error: {e}")
             del user_states[user_id]
 
     elif state['step'] == 'awaiting_otp':
         otp = event.text.strip()
         client = state['client']
         phone_number = state['phone_number']
-        session_name = state['session_name']
 
         try:
             await client.sign_in(phone_number, otp)
-            save_credentials(session_name, {
-                'api_id': state['api_id'],
-                'api_hash': state['api_hash'],
-                'phone_number': phone_number,
-            })
-            await event.reply("Account successfully hosted!")
-            # Ask the user what they want to do
-            await event.reply("What would you like to do next?\n1. Run ads in groups\n2. Leave groups\nPlease reply with 1 or 2.")
-            state.update({'step': 'choose_action'})
+            await event.reply("Account successfully hosted! What would you like to do next?\n1. Forward ads to groups\n2. Leave groups\nReply with 1 or 2.")
+            state['step'] = 'choose_action'
         except Exception as e:
-            await event.reply(f"Error during login with OTP: {e}")
-        finally:
+            await event.reply(f"Error: {e}")
             del user_states[user_id]
 
     elif state['step'] == 'choose_action':
         choice = event.text.strip()
         if choice == '1':
-            state['action'] = 'run_ads'
-            await event.reply("How many rounds of ads would you like to run? Please provide a number.")
+            await event.reply("How many rounds of ads would you like to run?")
             state['step'] = 'awaiting_rounds'
         elif choice == '2':
-            state['action'] = 'leave_groups'
-            await event.reply("I will now proceed to leave groups.")
-            await leave_unwanted_groups(state['client'])
+            await leave_groups(state['client'])
+            await event.reply("Left all groups.")
             del user_states[user_id]
         else:
-            await event.reply("Invalid choice! Please reply with 1 to run ads or 2 to leave groups.")
+            await event.reply("Invalid choice. Reply with 1 or 2.")
 
     elif state['step'] == 'awaiting_rounds':
         try:
             rounds = int(event.text.strip())
             state['rounds'] = rounds
-            await event.reply("How many times would you like to forward the ad to each group per round? Please provide a number.")
-            state['step'] = 'awaiting_forward_count'
-        except ValueError:
-            await event.reply("Please enter a valid number for rounds.")
-
-    elif state['step'] == 'awaiting_forward_count':
-        try:
-            forward_count = int(event.text.strip())
-            state['forward_count'] = forward_count
-            await event.reply("What delay (in seconds) would you like between each round of ads?")
-            state['step'] = 'awaiting_delay'
-        except ValueError:
-            await event.reply("Please enter a valid number for forward count.")
-
-    elif state['step'] == 'awaiting_delay':
-        try:
-            delay = int(event.text.strip())
-            state['delay'] = delay
-            await event.reply(f"Starting to run ads in {state['rounds']} rounds, forwarding {state['forward_count']} times per group, with {state['delay']} seconds delay between each round.")
-            await run_ads_in_groups(state['client'], state['rounds'], state['forward_count'], state['delay'])
-            del user_states[user_id]
-        except ValueError:
-            await event.reply("Please enter a valid number for delay.")
-
-async def run_ads_in_groups(client, rounds, forward_count, delay):
-    # Select the message to forward (e.g., a message in 'Saved Messages')
-    saved_messages_peer = await client.get_input_entity('me')
-    history = await client.get_messages(saved_messages_peer, limit=1)
-
-    if not history:
-        print("No messages found in 'Saved Messages' to forward.")
-        return
-
-    ad_message = history[0]
-
-    for round_num in range(1, rounds + 1):
-        print(f"Starting round {round_num}...")
-        # Loop through the user's groups and forward the ad multiple times
-        async for dialog in client.iter_dialogs():
-            if dialog.is_group:
-                group = dialog.entity
-                for _ in range(forward_count):
-                    try:
-                        # Forward the message to the group
-                        await client.forward_messages(group.id, ad_message)
-                        print(Fore.GREEN + f"Ad forwarded to {group.title}")
-                    except Exception as e:
-                        print(Fore.RED + f"Failed to forward ad to {group.title}: {str(e)}")
-                    await asyncio.sleep(1)  # Delay between forwards to avoid spam
-        if round_num < rounds:
-            print(f"Delaying for {delay} seconds before the next round.")
-            await asyncio.sleep(delay)
-
-async def leave_unwanted_groups(client):
-    # Loop through the user's groups and leave groups
-    async for dialog in client.iter_dialogs():
-        if dialog.is_group:
-            group = dialog.entity
-            try:
-                await client.send_message(group.id, "Leaving this group.")
-                await client(LeaveChannelRequest(group))
-                print(Fore.YELLOW + f"Left group {group.title}")
-            except Exception as e:
-                print(Fore.RED + f"Failed to leave group {group.title}: {str(e)}")
-            await asyncio.sleep(2)  # Delay to avoid rapid actions
-
-# Run the bot
-print("Bot is running...")
-bot.start(bot_token=BOT_API_TOKEN)
-bot.run_until_disconnected()
+        
