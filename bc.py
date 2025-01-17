@@ -44,17 +44,23 @@ def delete_session(session_name):
 
     for _ in range(retry_attempts):
         try:
-            # Open the connection with a longer timeout
-            with sqlite3.connect('your_database.db', timeout=timeout) as conn:
-                cursor = conn.cursor()
-                cursor.execute(f'DELETE FROM sessions WHERE session_name = "{session_name}"')
-                conn.commit()  # Commit changes to the database
+            # Use WAL mode to improve concurrency in SQLite
+            conn = sqlite3.connect('your_database.db')
+            conn.execute('PRAGMA journal_mode=WAL')  # Enable Write-Ahead Logging (WAL)
+            cursor = conn.cursor()
+
+            # Attempt to delete session in the database
+            cursor.execute(f'DELETE FROM sessions WHERE session_name = "{session_name}"')
+            conn.commit()  # Commit changes to the database
+
             if os.path.exists(session_file):
                 os.remove(session_file)  # Remove the session file if exists
             print("Session deleted successfully.")
-            return  # If successful, exit the function
+            conn.close()  # Close the connection after operation
+            return  # Exit the function if successful
         except sqlite3.OperationalError as e:
             print(f"Error: {e}. Retrying...")
+            conn.close()  # Ensure connection is closed even on error
             time.sleep(2)  # Wait before retrying
     print("Failed to delete session after multiple attempts.")  # Failed after retries
 
