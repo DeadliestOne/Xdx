@@ -80,10 +80,10 @@ async def process_input(event):
                 accounts[phone_number] = client
                 await client.disconnect()
                 await event.reply(f"Account {phone_number} is already authorized and hosted!")
-                del user_states[user_id]
+                del user_states[user_id]  # Reset user state after process is done
         except Exception as e:
             await event.reply(f"Error: {e}")
-            del user_states[user_id]
+            del user_states[user_id]  # Reset user state in case of error
 
     # OTP Verification
     elif state['step'] == 'awaiting_otp':
@@ -95,10 +95,10 @@ async def process_input(event):
             await client.sign_in(phone_number, otp)
             accounts[phone_number] = client
             await event.reply(f"Account {phone_number} successfully hosted! Use /forward to start forwarding ads.")
-            del user_states[user_id]
+            del user_states[user_id]  # Reset user state after successful hosting
         except Exception as e:
             await event.reply(f"Error: {e}")
-            del user_states[user_id]
+            del user_states[user_id]  # Reset user state in case of error
 
 
 @bot.on(events.NewMessage(pattern='/forward'))
@@ -152,7 +152,7 @@ async def process_forwarding(event):
             state['delay'] = delay
             await event.reply("Starting the ad forwarding process...")
             await forward_ads(state['message_count'], state['rounds'], state['delay'])
-            del user_states[user_id]
+            del user_states[user_id]  # Reset user state after forwarding process is done
         except ValueError:
             await event.reply("Please provide a valid number.")
 
@@ -187,6 +187,6 @@ async def forward_ads(message_count, rounds, delay):
                 await asyncio.sleep(delay)
 
 
-print("Bot is running...For 10$")
+print("Bot is running...")
 bot.start(bot_token=BOT_API_TOKEN)
 bot.run_until_disconnected()
