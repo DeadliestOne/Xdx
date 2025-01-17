@@ -14,7 +14,7 @@ USER_API_ID = "26416419"  # Replace with your API ID
 USER_API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"  # Replace with your API Hash
 
 # Constants for bot session
-BOT_API_TOKEN = "7226701592:AAEqPN7bjyECFSucMld7JMtaQ5hC_nCY_JQ"  #"  # Replace with your bot token
+BOT_API_TOKEN = "7226701592:AAEqPN7bjyECFSucMld7JMtaQ5hC_nCY_JQ"  #  # Replace with your bot token
 
 CREDENTIALS_FOLDER = 'sessions'
 
@@ -34,6 +34,11 @@ def load_credentials(session_name):
         with open(path, 'r') as f:
             return json.load(f)
     return {}
+
+def delete_session(session_name):
+    session_file = os.path.join(CREDENTIALS_FOLDER, f"{session_name}.session")
+    if os.path.exists(session_file):
+        os.remove(session_file)
 
 # Initialize the bot client (correct bot initialization)
 bot = TelegramClient('bot_session', api_id=USER_API_ID, api_hash=USER_API_HASH)
@@ -73,6 +78,10 @@ async def process_user_input(event):
 
         api_id, api_hash, phone_number = data
         session_name = f'session_{user_id}'
+
+        # If session already exists, delete it to force a fresh login process
+        delete_session(session_name)
+
         client = TelegramClient(session_name, api_id, api_hash)
 
         try:
