@@ -109,6 +109,10 @@ async def forward_command(event):
         return
 
     user_id = event.sender_id
+    if user_id in user_states:
+        await event.reply("You already have an active process. Please complete it before starting a new one.")
+        return
+
     user_states[user_id] = {'step': 'awaiting_message_count'}
     await event.reply("How many messages would you like to forward per group (1-5)?")
 
