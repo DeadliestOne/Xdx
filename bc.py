@@ -91,8 +91,8 @@ async def process_input(event):
     elif state['step'] == 'choose_action':
         choice = event.text.strip()
         if choice == '1':
-            await event.reply("How many rounds of ads would you like to run?")
-            state['step'] = 'awaiting_rounds'
+            await event.reply("Do you want to forward 1 or 2 messages? Reply with 1 or 2.")
+            state['step'] = 'awaiting_message_count'
         elif choice == '2':
             try:
                 await leave_groups(state['client'])
@@ -102,6 +102,15 @@ async def process_input(event):
                 await event.reply(f"Error: {e}")
         else:
             await event.reply("Invalid choice. Reply with 1 or 2.")
+
+    elif state['step'] == 'awaiting_message_count':
+        message_count = event.text.strip()
+        if message_count not in ['1', '2']:
+            await event.reply("Invalid input. Please reply with 1 or 2.")
+            return
+        state['message_count'] = int(message_count)
+        await event.reply("How many rounds of ads would you like to run?")
+        state['step'] = 'awaiting_rounds'
 
     elif state['step'] == 'awaiting_rounds':
         try:
@@ -125,33 +134,33 @@ async def process_input(event):
         try:
             delay = int(event.text.strip())
             state['delay'] = delay
-            await event.reply("Starting ad forwarding process.")
-            await forward_ads(state['client'], state['rounds'], state['forward_count'], state['delay'])
+            await event.reply("Starting ad forwarding process... One More Thing This Is A Script Which Was Maded By @UncountableAura For 10$ Only")
+            await forward_ads(state['client'], state['message_count'], state['rounds'], state['forward_count'], state['delay'])
             del user_states[user_id]
         except ValueError:
             await event.reply("Please provide a valid number.")
 
-async def forward_ads(client, rounds, forward_count, delay):
+async def forward_ads(client, message_count, rounds, forward_count, delay):
     """Forwards ads to all groups."""
     await client.connect()
-    saved_messages = await client.get_messages('me', limit=1)
-    if not saved_messages:
-        print("No messages in 'Saved Messages'.")
+    saved_messages = await client.get_messages('me', limit=message_count)
+    if not saved_messages or len(saved_messages) < message_count:
+        print("Not enough messages in 'Saved Messages'.")
         return
 
-    ad_message = saved_messages[0]
     for round_num in range(1, rounds + 1):
         print(f"Round {round_num}...")
         async for dialog in client.iter_dialogs():
             if dialog.is_group:
                 group = dialog.entity
-                for _ in range(forward_count):
-                    try:
-                        await client.forward_messages(group.id, ad_message)
-                        print(f"Ad forwarded to {group.title}")
-                    except Exception as e:
-                        print(f"Failed to forward to {group.title}: {e}")
-                    await asyncio.sleep(1)
+                for message in saved_messages:
+                    for _ in range(forward_count):
+                        try:
+                            await client.forward_messages(group.id, message)
+                            print(f"Ad forwarded to {group.title}")
+                        except Exception as e:
+                            print(f"Failed to forward to {group.title}: {e}")
+                        await asyncio.sleep(1)
         if round_num < rounds:
             await asyncio.sleep(delay)
 
