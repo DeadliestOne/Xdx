@@ -36,7 +36,7 @@ def load_credentials(session_name):
     return {}
 
 # Initialize the bot client (correct bot initialization)
-bot = TelegramClient('bot_session', bot_token=BOT_API_TOKEN)
+bot = TelegramClient('bot_session', api_id=None, api_hash=None).start(bot_token=BOT_API_TOKEN)
 
 # Initialize the user client
 user_client = TelegramClient('user_session', USER_API_ID, USER_API_HASH)
