@@ -32,12 +32,13 @@ async def start(event):
     """Welcome message for users."""
     await event.reply("Welcome! Use the following commands:\n\n"
                       "/host - Host a new Telegram account\n"
+                      "/addaccount - Add another account\n"
                       "/forward - Start forwarding ads\n"
                       "/accounts - List hosted accounts\n"
                       "/remove - Remove a hosted account")
 
 
-@bot.on(events.NewMessage(pattern='/host'))
+@bot.on(events.NewMessage(pattern='/host|/addaccount'))
 async def host_command(event):
     """Starts the hosting process for a new account."""
     user_id = event.sender_id
@@ -104,7 +105,7 @@ async def process_input(event):
 async def forward_command(event):
     """Starts the ad forwarding process."""
     if not accounts:
-        await event.reply("No accounts are hosted. Use /host to add accounts.")
+        await event.reply("No accounts are hosted. Use /host or /addaccount to add accounts.")
         return
 
     user_id = event.sender_id
@@ -186,6 +187,6 @@ async def forward_ads(message_count, rounds, delay):
                 await asyncio.sleep(delay)
 
 
-print("Bot is running...")
+print("Bot is running...For 10$")
 bot.start(bot_token=BOT_API_TOKEN)
 bot.run_until_disconnected()
