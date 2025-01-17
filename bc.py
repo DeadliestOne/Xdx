@@ -10,8 +10,8 @@ from colorama import init, Fore
 init(autoreset=True)
 
 # Constants for user session
-USER_API_ID = "26416419"  # Replace with your API ID
-USER_API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"  # Replace with your API Hash
+API_ID = "26416419"  # Replace with your API ID
+API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"  # Replace with your API Hash
 
 # Constants for bot session
 BOT_API_TOKEN = "7226701592:AAEqPN7bjyECFSucMld7JMtaQ5hC_nCY_JQ"  # Replace with your bot token
