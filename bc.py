@@ -69,9 +69,18 @@ async def unauthorize_command(event):
 
     # Check if the session exists
     if os.path.exists(os.path.join(CREDENTIALS_FOLDER, f"{session_name}.session")):
-        # Delete the session file to unauthorize the account
-        delete_session(session_name)
-        await event.reply("Account has been successfully unauthenticated and session deleted.")
+        # Disconnect client and delete the session
+        try:
+            client = TelegramClient(session_name, USER_API_ID, USER_API_HASH)
+            await client.connect()
+            if await client.is_user_authorized():
+                await client.disconnect()
+                delete_session(session_name)
+                await event.reply("Account has been successfully unauthenticated and session deleted.")
+            else:
+                await event.reply("Your account is not authorized.")
+        except Exception as e:
+            await event.reply(f"Error during disconnection: {e}")
     else:
         await event.reply("No active session found for your account.")
 
@@ -100,6 +109,8 @@ async def process_user_input(event):
 
         try:
             await client.connect()
+
+            # Check if the user is authorized or not
             if not await client.is_user_authorized():
                 await client.send_code_request(phone_number)
                 state.update({
