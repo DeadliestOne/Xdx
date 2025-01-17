@@ -2,7 +2,6 @@ import os
 import json
 import asyncio
 from telethon import TelegramClient, events
-from telethon.errors import SessionPasswordNeededError
 from telethon.tl.functions.channels import LeaveChannelRequest
 from colorama import init, Fore
 import time
@@ -95,9 +94,12 @@ async def process_input(event):
             await event.reply("How many rounds of ads would you like to run?")
             state['step'] = 'awaiting_rounds'
         elif choice == '2':
-            await leave_groups(state['client'])
-            await event.reply("Left all groups.")
-            del user_states[user_id]
+            try:
+                await leave_groups(state['client'])
+                await event.reply("Left all groups.")
+                del user_states[user_id]
+            except Exception as e:
+                await event.reply(f"Error: {e}")
         else:
             await event.reply("Invalid choice. Reply with 1 or 2.")
 
@@ -105,4 +107,65 @@ async def process_input(event):
         try:
             rounds = int(event.text.strip())
             state['rounds'] = rounds
-        
+            await event.reply("How many messages to forward per group per round?")
+            state['step'] = 'awaiting_forward_count'
+        except ValueError:
+            await event.reply("Please provide a valid number.")
+
+    elif state['step'] == 'awaiting_forward_count':
+        try:
+            forward_count = int(event.text.strip())
+            state['forward_count'] = forward_count
+            await event.reply("Enter delay (in seconds) between rounds.")
+            state['step'] = 'awaiting_delay'
+        except ValueError:
+            await event.reply("Please provide a valid number.")
+
+    elif state['step'] == 'awaiting_delay':
+        try:
+            delay = int(event.text.strip())
+            state['delay'] = delay
+            await event.reply("Starting ad forwarding process.")
+            await forward_ads(state['client'], state['rounds'], state['forward_count'], state['delay'])
+            del user_states[user_id]
+        except ValueError:
+            await event.reply("Please provide a valid number.")
+
+async def forward_ads(client, rounds, forward_count, delay):
+    """Forwards ads to all groups."""
+    await client.connect()
+    saved_messages = await client.get_messages('me', limit=1)
+    if not saved_messages:
+        print("No messages in 'Saved Messages'.")
+        return
+
+    ad_message = saved_messages[0]
+    for round_num in range(1, rounds + 1):
+        print(f"Round {round_num}...")
+        async for dialog in client.iter_dialogs():
+            if dialog.is_group:
+                group = dialog.entity
+                for _ in range(forward_count):
+                    try:
+                        await client.forward_messages(group.id, ad_message)
+                        print(f"Ad forwarded to {group.title}")
+                    except Exception as e:
+                        print(f"Failed to forward to {group.title}: {e}")
+                    await asyncio.sleep(1)
+        if round_num < rounds:
+            await asyncio.sleep(delay)
+
+async def leave_groups(client):
+    """Leaves all groups."""
+    await client.connect()
+    async for dialog in client.iter_dialogs():
+        if dialog.is_group:
+            try:
+                await client(LeaveChannelRequest(dialog.entity))
+                print(f"Left group {dialog.name}")
+            except Exception as e:
+                print(f"Failed to leave {dialog.name}: {e}")
+
+print("Bot is running...")
+bot.start(bot_token=BOT_API_TOKEN)
+bot.run_until_disconnected()
