@@ -3,7 +3,6 @@ import json
 import asyncio
 from telethon import TelegramClient, events
 from telethon.errors import SessionPasswordNeededError
-from telethon.tl.functions.messages import ForwardMessages
 from colorama import init, Fore
 
 # Initialize colorama for colored output
@@ -129,7 +128,8 @@ async def forward_ads_to_groups(client):
         if dialog.is_group:
             group = dialog.entity
             try:
-                await client.forward_messages(group, ad_message)
+                # Forward the message to the group
+                await client.forward_messages(group.id, ad_message)
                 print(Fore.GREEN + f"Ad forwarded to {group.title}")
             except Exception as e:
                 print(Fore.RED + f"Failed to forward ad to {group.title}: {str(e)}")
