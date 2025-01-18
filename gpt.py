@@ -15,8 +15,17 @@ SESSION_FOLDER = 'sessions'
 if not os.path.exists(SESSION_FOLDER):
     os.mkdir(SESSION_FOLDER)
 
+# Proxy configuration (Replace with your proxy details)
+PROXY = {
+    'proxy_type': 'socks5',  # Proxy type: socks5, http
+    'addr': '203.142.77.226',  # Replace with your proxy IP address
+    'port': 8080,  # Replace with your proxy port
+    'username': None,  # Proxy username if needed
+    'password': None   # Proxy password if needed
+}
+
 # Initialize the Telegram bot
-bot = TelegramClient('bot', API_ID, API_HASH)
+bot = TelegramClient('bot', API_ID, API_HASH, proxy=(PROXY['proxy_type'], PROXY['addr'], PROXY['port'], PROXY['username'], PROXY['password']))
 
 # This will hold the clients for each account
 clients = {}
@@ -36,7 +45,7 @@ async def login(account_name, phone_number):
     if os.path.exists(session_name):
         return f"Account {account_name} already logged in!"
     
-    client = TelegramClient(session_name, API_ID, API_HASH)
+    client = TelegramClient(session_name, API_ID, API_HASH, proxy=(PROXY['proxy_type'], PROXY['addr'], PROXY['port'], PROXY['username'], PROXY['password']))
     
     await client.connect()
     if not await client.is_user_authorized():
@@ -53,7 +62,7 @@ async def verify_otp(account_name, otp):
         return f"No OTP request found for {account_name}. Please log in first."
 
     phone_number = otp_requests[account_name]
-    client = TelegramClient(f"{SESSION_FOLDER}/{account_name}_session", API_ID, API_HASH)
+    client = TelegramClient(f"{SESSION_FOLDER}/{account_name}_session", API_ID, API_HASH, proxy=(PROXY['proxy_type'], PROXY['addr'], PROXY['port'], PROXY['username'], PROXY['password']))
     
     try:
         # Try to sign in using the OTP
