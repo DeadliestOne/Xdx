@@ -8,7 +8,7 @@ API_HASH = 'c109c77f5823c847b1aeb7fbd4990cc4'  # Replace with your Telegram API 
 BOT_TOKEN = '7881162036:AAFqwmF2ny9TEMhNdbIohy7oh507PkWk5Wg'  # Replace with your Bot Token
 
 # Channels to Join
-REQUIRED_CHANNELS = ["@SuiiBrohh", "@CprxD"]  # Replace with your channel usernames
+REQUIRED_CHANNELS = ["@BeAkatsuki", "@penguin_logs"]  # Replace with your channel usernames
 
 # Anime Video Links
 ANIME_VIDEO_LINKS = [
@@ -36,13 +36,14 @@ ANIME_VIDEO_LINKS = [
 # Initialize the Bot
 app = Client("anime_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-def check_user_in_channels(user_id, bot):
+def check_user_in_channels(user_id):
     """Check if the user has joined all required channels."""
     for channel in REQUIRED_CHANNELS:
         try:
-            member = bot.get_chat_member(channel, user_id)
+            # Check the user's membership status in the channel
+            member = app.get_chat_member(channel, user_id)
             if member.status not in ["member", "administrator", "creator"]:
-                print(f"User not a member of {channel}")
+                print(f"User is not a member of {channel}")
                 return False
         except Exception as e:
             print(f"Error checking membership for {channel}: {e}")
@@ -52,7 +53,7 @@ def check_user_in_channels(user_id, bot):
 @app.on_message(filters.command("start"))
 def start(bot, message):
     user_id = message.from_user.id
-    if not check_user_in_channels(user_id, bot):
+    if not check_user_in_channels(user_id):
         # Prompt to join channels
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton(f"Join {channel}", url=f"https://t.me/{channel[1:]}")] for channel in REQUIRED_CHANNELS
@@ -72,7 +73,7 @@ def start(bot, message):
 @app.on_callback_query(filters.regex("check_join"))
 def check_join(bot, callback_query):
     user_id = callback_query.from_user.id
-    if check_user_in_channels(user_id, bot):
+    if check_user_in_channels(user_id):
         bot.answer_callback_query(callback_query.id, "✅ You have joined all channels!")
         bot.send_message(chat_id=user_id, text="🎉 Thanks for joining! Here are your anime videos:")
         for video in ANIME_VIDEO_LINKS[:100]:
