@@ -8,17 +8,17 @@ API_HASH = 'c109c77f5823c847b1aeb7fbd4990cc4'  # Replace with your Telegram API 
 BOT_TOKEN = '7881162036:AAFqwmF2ny9TEMhNdbIohy7oh507PkWk5Wg'  # Replace with your Bot Token
 
 # Channels to Join
-REQUIRED_CHANNELS = ["@BeAkatsuki", "@penguin_logs"]  # Replace with your channel usernames
+REQUIRED_CHANNELS = ["@CprxD", "@SuiiBrohh"]  # Replace with your channel usernames
 
 # Anime Video Links
 ANIME_VIDEO_LINKS = [
     "https://files.catbox.moe/6boq1r.mp4",
     "https://files.catbox.moe/u0z2un.mp4",
-    "https://files.catbox.moe/yz9nzb.mp4" ,
-    "https://files.catbox.moe/3fgazt.mp4" ,
-    "https://files.catbox.moe/y5j0dl.mp4" ,
-    "https://files.catbox.moe/m36po8.mp4" ,
-    "https://files.catbox.moe/ixfxl2.mp4"
+    "https://files.catbox.moe/yz9nzb.mp4",
+    "https://files.catbox.moe/3fgazt.mp4",
+    "https://files.catbox.moe/y5j0dl.mp4",
+    "https://files.catbox.moe/m36po8.mp4",
+    "https://files.catbox.moe/ixfxl2.mp4",
     "https://files.catbox.moe/c7wkqf.mp4",
     "https://files.catbox.moe/cuw8qy.mp4",
     "https://files.catbox.moe/hrj9hc.mp4",
@@ -31,8 +31,8 @@ ANIME_VIDEO_LINKS = [
     "https://files.catbox.moe/tz4af8.mp4",
     "https://files.catbox.moe/oc9wi0.mp4",
     "https://files.catbox.moe/1wmvrc.mp4",
-   
-   ]
+]
+
 
 # Initialize the Bot
 app = Client("anime_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
