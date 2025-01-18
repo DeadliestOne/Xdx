@@ -8,7 +8,7 @@ API_HASH = 'c109c77f5823c847b1aeb7fbd4990cc4'  # Replace with your Telegram API 
 BOT_TOKEN = '7881162036:AAFqwmF2ny9TEMhNdbIohy7oh507PkWk5Wg'  # Replace with your Bot Token
 
 # Channels to Join
-REQUIRED_CHANNELS = ["@CprxD", "@SuiiBrohh"]  # Replace with your channel usernames
+REQUIRED_CHANNELS = ["@BeAkatsuki", "@penguin_logs"]  # Replace with your channel usernames
 
 # Anime Video Links
 ANIME_VIDEO_LINKS = [
@@ -33,15 +33,14 @@ ANIME_VIDEO_LINKS = [
     "https://files.catbox.moe/1wmvrc.mp4",
 ]
 
-
 # Initialize the Bot
 app = Client("anime_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-def check_user_in_channels(user_id):
+def check_user_in_channels(user_id, bot):
     """Check if the user has joined all required channels."""
     for channel in REQUIRED_CHANNELS:
         try:
-            member = app.get_chat_member(channel, user_id)
+            member = bot.get_chat_member(channel, user_id)
             if member.status not in ["member", "administrator", "creator"]:
                 return False
         except:
@@ -51,7 +50,7 @@ def check_user_in_channels(user_id):
 @app.on_message(filters.command("start"))
 def start(bot, message):
     user_id = message.from_user.id
-    if not check_user_in_channels(user_id):
+    if not check_user_in_channels(user_id, bot):
         # Prompt to join channels
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton(f"Join {channel}", url=f"https://t.me/{channel[1:]}")] for channel in REQUIRED_CHANNELS
@@ -71,7 +70,7 @@ def start(bot, message):
 @app.on_callback_query(filters.regex("check_join"))
 def check_join(bot, callback_query):
     user_id = callback_query.from_user.id
-    if check_user_in_channels(user_id):
+    if check_user_in_channels(user_id, bot):
         bot.answer_callback_query(callback_query.id, "✅ You have joined all channels!")
         bot.send_message(chat_id=user_id, text="🎉 Thanks for joining! Here are your anime videos:")
         for video in ANIME_VIDEO_LINKS[:100]:
