@@ -1,52 +1,84 @@
-import requests
-import json
-import re
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from time import sleep
 
-def get_google_id(email):
-    url = "https://people-pa.clients6.google.com/$rpc/google.internal.people.v2.minimal.PeopleApiAutocompleteMinimalService/ListAutocompletions"
-    headers = {
-        "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    }
-    data = json.dumps([email, None, None, ["GMAIL_COMPOSE_WEB_POPULOUS"], 8, None, None, None, ["GMAIL_COMPOSE_WEB_POPULOUS", None, 2]])
+# Bot Configuration
+API_ID = '26416419'  # Replace with your Telegram API ID
+API_HASH = 'c109c77f5823c847b1aeb7fbd4990cc4'  # Replace with your Telegram API Hash
+BOT_TOKEN = '7881162036:AAFqwmF2ny9TEMhNdbIohy7oh507PkWk5Wg'  # Replace with your Bot Token
 
-    response = requests.post(url, headers=headers, data=data)
-    if response.status_code == 200:
-        match = re.search(r'"([0-9]{21})"', response.text)
-        if match:
-            return match.group(1)
-    return None
+# Channels to Join
+REQUIRED_CHANNELS = ["@BeAkatsuki", "@penguin_logs"]  # Replace with your channel usernames
 
-def get_profile_info(google_id):
-    url = f"https://www.google.com/maps/contrib/{google_id}"
-    response = requests.get(url)
-    if response.status_code == 200:
-        name_match = re.search(r'<meta content="Contributions by (.*?)"', response.text)
-        image_match = re.search(r'<meta property="og:image" content="(.*?)"', response.text)
-        
-        name = name_match.group(1) if name_match else "Not found"
-        image_url = image_match.group(1) if image_match else "Not found"
-        
-        return {"name": name, "profile_image": image_url}
-    return None
+# Anime Video Links
+ANIME_VIDEO_LINKS = [
+    "https://files.catbox.moe/6boq1r.mp4",
+    "https://files.catbox.moe/u0z2un.mp4",
+    "https://files.catbox.moe/yz9nzb.mp4" ,
+    "https://files.catbox.moe/3fgazt.mp4" ,
+    "https://files.catbox.moe/y5j0dl.mp4" ,
+    "https://files.catbox.moe/m36po8.mp4" ,
+    "https://files.catbox.moe/ixfxl2.mp4"
+    "https://files.catbox.moe/c7wkqf.mp4",
+    "https://files.catbox.moe/cuw8qy.mp4",
+    "https://files.catbox.moe/hrj9hc.mp4",
+    "https://files.catbox.moe/8ell4z.mp4",
+    "https://files.catbox.moe/cl59ro.mp4",
+    "https://files.catbox.moe/kelo65.mp4",
+    "https://files.catbox.moe/brh8k2.mp4",
+    "https://files.catbox.moe/l29mj8.mp4",
+    "https://files.catbox.moe/463a7s.mp4",
+    "https://files.catbox.moe/tz4af8.mp4",
+    "https://files.catbox.moe/oc9wi0.mp4",
+    "https://files.catbox.moe/1wmvrc.mp4",
+   
+   ]
 
-def gmail_osint(email):
-    print(f"Performing OSINT on: {email}")
-    
-    google_id = get_google_id(email)
-    if not google_id:
-        print("Could not retrieve Google ID.")
-        return
-    
-    print(f"Google ID: {google_id}")
-    
-    profile_info = get_profile_info(google_id)
-    if profile_info:
-        print(f"Name: {profile_info['name']}")
-        print(f"Profile Image URL: {profile_info['profile_image']}")
+# Initialize the Bot
+app = Client("anime_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+
+def check_user_in_channels(user_id):
+    """Check if the user has joined all required channels."""
+    for channel in REQUIRED_CHANNELS:
+        try:
+            member = app.get_chat_member(channel, user_id)
+            if member.status not in ["member", "administrator", "creator"]:
+                return False
+        except:
+            return False
+    return True
+
+@app.on_message(filters.command("start"))
+def start(bot, message):
+    user_id = message.from_user.id
+    if not check_user_in_channels(user_id):
+        # Prompt to join channels
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton(f"Join {channel}", url=f"https://t.me/{channel[1:]}")] for channel in REQUIRED_CHANNELS
+        ] + [[InlineKeyboardButton("I Joined All", callback_data="check_join")]])
+        bot.send_message(
+            chat_id=user_id,
+            text="📢 Please join the following channels to access the anime videos:",
+            reply_markup=keyboard
+        )
     else:
-        print("Could not retrieve profile information.")
+        # Send Anime Videos
+        bot.send_message(chat_id=user_id, text="🎉 Thanks for joining! Here are your anime videos:")
+        for video in ANIME_VIDEO_LINKS[:100]:
+            bot.send_video(chat_id=user_id, video=video)
+            sleep(1)  # Avoid flooding
 
-if __name__ == "__main__":
-    email = input("Enter Gmail address: ")
-    gmail_osint(email)
+@app.on_callback_query(filters.regex("check_join"))
+def check_join(bot, callback_query):
+    user_id = callback_query.from_user.id
+    if check_user_in_channels(user_id):
+        bot.answer_callback_query(callback_query.id, "✅ You have joined all channels!")
+        bot.send_message(chat_id=user_id, text="🎉 Thanks for joining! Here are your anime videos:")
+        for video in ANIME_VIDEO_LINKS[:100]:
+            bot.send_video(chat_id=user_id, video=video)
+            sleep(1)  # Avoid flooding
+    else:
+        bot.answer_callback_query(callback_query.id, "❌ You haven't joined all channels yet. Please join first.")
+
+# Run the Bot
+print("Bot is running...")
+app.run()
