@@ -1,4 +1,5 @@
 import os
+import psutil
 import asyncio
 from telethon import TelegramClient, events
 from telethon.errors import FloodWaitError
@@ -30,22 +31,50 @@ ALLOWED_USERS = set([OWNER_ID])  # Initially allow only the owner
 user_states = {}
 accounts = {}  # Hosted accounts
 
+
 @bot.on(events.NewMessage(pattern='/start'))
-async def start(event):
+async def start_command(event):
     """Welcome message for users."""
     user_id = event.sender_id
     if user_id not in ALLOWED_USERS:
         await event.reply("You are not authorized to use this bot.")
         return
-    
-    await event.reply("Welcome! Use the following commands:\n\n"
-                      "/host - Host a new Telegram account\n"
-                      "/forward - Start forwarding ads\n"
-                      "/accounts - List hosted accounts\n"
-                      "/remove - Remove a hosted account\n"
-                      "/add {user_id} - Add a user to the allowed list (owner only)")
 
-# /add command: Adds a user to the allowed users list (owner only)
+    await event.reply(
+        "Welcome! Use the following commands:\n\n"
+        "/host - Host a new Telegram account\n"
+        "/forward - Start forwarding ads\n"
+        "/accounts - List hosted accounts\n"
+        "/remove - Remove a hosted account\n"
+        "/add {user_id} - Add a user to the allowed list (owner only)\n"
+        "/stats - View server stats and hosting capacity"
+    )
+
+
+@bot.on(events.NewMessage(pattern='/stats'))
+async def stats_command(event):
+    """Displays server stats and hosted accounts information."""
+    user_id = event.sender_id
+    if user_id not in ALLOWED_USERS:
+        await event.reply("You are not authorized to use this bot.")
+        return
+
+    # Fetch system stats
+    ram_usage = psutil.virtual_memory().percent
+    cpu_usage = psutil.cpu_percent(interval=1)
+    total_accounts = len(accounts)
+    hosting_capacity = max(0, 50 - total_accounts)  # Assuming a limit of 50 accounts
+
+    message = (
+        f"Server Stats:\n"
+        f"RAM Usage: {ram_usage}%\n"
+        f"CPU Usage: {cpu_usage}%\n"
+        f"Hosted Accounts: {total_accounts}\n"
+        f"Remaining Hosting Capacity: {hosting_capacity} accounts"
+    )
+    await event.reply(message)
+
+
 @bot.on(events.NewMessage(pattern='/add'))
 async def add_command(event):
     """Adds a user to the allowed list."""
@@ -54,18 +83,20 @@ async def add_command(event):
         await event.reply("You are not authorized to use this command.")
         return
 
-    # Get the user ID from the message
     user_input = event.text.split()
     if len(user_input) != 2:
         await event.reply("Usage: /add {user_id}")
         return
 
-    new_user_id = int(user_input[1])
-    ALLOWED_USERS.add(new_user_id)
-    await event.reply(f"User {new_user_id} added to the allowed list.")
+    try:
+        new_user_id = int(user_input[1])
+        ALLOWED_USERS.add(new_user_id)
+        await event.reply(f"User {new_user_id} added to the allowed list.")
+    except ValueError:
+        await event.reply("Invalid user ID.")
 
-# /host command: Starts the hosting process for a new account
-@bot.on(events.NewMessage(pattern='/host|/addaccount'))
+
+@bot.on(events.NewMessage(pattern='/host'))
 async def host_command(event):
     """Starts the hosting process for a new account."""
     user_id = event.sender_id
@@ -73,49 +104,19 @@ async def host_command(event):
         await event.reply("You are not authorized to use this command.")
         return
 
-    if user_id in user_states:
-        if user_states[user_id].get('step') in ['awaiting_credentials', 'awaiting_otp']:
-            await event.reply("You already have an active process. Please complete it before starting a new one.")
-        else:
-            del user_states[user_id]  # Remove any old process state
-            await event.reply("You can start hosting a new account now.")
-    else:
-        user_states[user_id] = {'step': 'awaiting_credentials'}
-        await event.reply("Send your API ID, API Hash, and phone number in the format:\n`API_ID|API_HASH|PHONE_NUMBER`")
+    user_states[user_id] = {'step': 'awaiting_credentials'}
+    await event.reply("Send your API ID, API Hash, and phone number in the format:\n`API_ID|API_HASH|PHONE_NUMBER`")
 
-# /forward command: Starts the ad forwarding process
-@bot.on(events.NewMessage(pattern='/forward'))
-async def forward_command(event):
-    """Starts the ad forwarding process."""
-    user_id = event.sender_id
-    if user_id not in ALLOWED_USERS:
-        await event.reply("You are not authorized to use this command.")
-        return
-
-    if user_id in user_states:
-        await event.reply("You already have an active process. Please complete it before starting a new one.")
-        return
-
-    if not accounts:
-        await event.reply("No accounts are hosted. Use /host or /addaccount to add accounts.")
-        return
-
-    # Display list of hosted accounts
-    account_list = '\n'.join([f"{i+1}. {phone}" for i, phone in enumerate(accounts.keys())])
-    await event.reply(f"Choose an account to forward ads from:\n{account_list}\nReply with the number of the account.")
-
-    user_states[user_id] = {'step': 'awaiting_account_choice'}
 
 @bot.on(events.NewMessage)
 async def process_input(event):
-    """Processes user input for account hosting or forwarding."""
+    """Processes user input for hosting or forwarding accounts."""
     user_id = event.sender_id
     if user_id not in user_states:
         return
 
     state = user_states[user_id]
 
-    # Handling user credentials for hosting a new account
     if state['step'] == 'awaiting_credentials':
         data = event.text.split('|')
         if len(data) != 3:
@@ -135,17 +136,12 @@ async def process_input(event):
             else:
                 accounts[phone_number] = client
                 await client.disconnect()
-                await event.reply(f"Account {phone_number} is already authorized and hosted!")
-                del user_states[user_id]  # Clear user state after completing hosting
-
-                # Ask for the next account info
-                await event.reply("Send the next account's details in the format:\n`API_ID|API_HASH|PHONE_NUMBER`")
-
+                await event.reply(f"Account {phone_number} successfully hosted!")
+                del user_states[user_id]
         except Exception as e:
             await event.reply(f"Error: {e}")
-            del user_states[user_id]  # Clear user state if error occurs
+            del user_states[user_id]
 
-    # OTP Verification
     elif state['step'] == 'awaiting_otp':
         otp = event.text.strip()
         client = state['client']
@@ -154,88 +150,28 @@ async def process_input(event):
         try:
             await client.sign_in(phone_number, otp)
             accounts[phone_number] = client
-            await event.reply(f"Account {phone_number} successfully hosted! Use /forward to start forwarding ads.")
-            del user_states[user_id]  # Clear user state after OTP verification
-
-            # Ask for the next account info
-            await event.reply("Send the next account's details in the format:\n`API_ID|API_HASH|PHONE_NUMBER`")
+            await event.reply(f"Account {phone_number} successfully hosted!")
+            del user_states[user_id]
         except Exception as e:
             await event.reply(f"Error: {e}")
-            del user_states[user_id]  # Clear user state if error occurs
+            del user_states[user_id]
 
-    # Handling forwarding process steps (account choice, message count, rounds, delay)
-    if state['step'] == 'awaiting_account_choice':
-        try:
-            account_choice = int(event.text.strip()) - 1
-            if 0 <= account_choice < len(accounts):
-                selected_account = list(accounts.keys())[account_choice]
-                state['selected_account'] = selected_account
-                state['step'] = 'awaiting_message_count'
-                await event.reply(f"Selected account {selected_account}. How many messages would you like to forward per group (1-5)?")
-            else:
-                await event.reply("Please choose a valid account number.")
-        except ValueError:
-            await event.reply("Please provide a valid number.")
 
-    elif state['step'] == 'awaiting_message_count':
-        try:
-            message_count = int(event.text.strip())
-            if 1 <= message_count <= 5:
-                state['message_count'] = message_count
-                state['step'] = 'awaiting_rounds'
-                await event.reply("How many rounds of ads would you like to run?")
-            else:
-                await event.reply("Please choose a number between 1 and 5.")
-        except ValueError:
-            await event.reply("Please provide a valid number.")
-
-    elif state['step'] == 'awaiting_rounds':
-        try:
-            rounds = int(event.text.strip())
-            state['rounds'] = rounds
-            state['step'] = 'awaiting_delay'
-            await event.reply("Enter delay (in seconds) between rounds.")
-        except ValueError:
-            await event.reply("Please provide a valid number.")
-
-    elif state['step'] == 'awaiting_delay':
-        try:
-            delay = int(event.text.strip())
-            state['delay'] = delay
-            await event.reply("Starting the ad forwarding process...")
-            await forward_ads(state['message_count'], state['rounds'], state['delay'], state['selected_account'])
-            del user_states[user_id]  # Clear user state after completing forwarding
-        except ValueError:
-            await event.reply("Please provide a valid number.")
-
-async def forward_ads(message_count, rounds, delay, selected_account):
-    """Forwards ads to all groups for the selected account."""
-    client = accounts[selected_account]
-    await client.connect()
-    saved_messages = await client.get_messages('me', limit=message_count)
-    if not saved_messages or len(saved_messages) < message_count:
-        print(f"Not enough messages in 'Saved Messages' for account {selected_account}.")
+@bot.on(events.NewMessage(pattern='/accounts'))
+async def accounts_command(event):
+    """Lists all hosted accounts."""
+    user_id = event.sender_id
+    if user_id not in ALLOWED_USERS:
+        await event.reply("You are not authorized to use this command.")
         return
 
-    for round_num in range(1, rounds + 1):
-        print(f"Round {round_num} for account {selected_account}...")
-        async for dialog in client.iter_dialogs():
-            if dialog.is_group:
-                group = dialog.entity
-                for message in saved_messages:
-                    try:
-                        await client.forward_messages(group.id, message)
-                        print(f"Ad forwarded to {group.title} from account {selected_account}.")
-                        # Random delay between messages
-                        await asyncio.sleep(random.uniform(2, 4))
-                    except FloodWaitError as e:
-                        print(f"Rate limited. Waiting for {e.seconds} seconds.")
-                        await asyncio.sleep(e.seconds)
-                    except Exception as e:
-                        print(f"Failed to forward to {group.title}: {e}")
-        if round_num < rounds:
-            print(f"Waiting {delay} seconds before the next round...")
-            await asyncio.sleep(delay)
+    if not accounts:
+        await event.reply("No accounts are hosted.")
+        return
+
+    account_list = '\n'.join([f"{i+1}. {phone}" for i, phone in enumerate(accounts.keys())])
+    await event.reply(f"Hosted accounts:\n{account_list}")
+
 
 # Run the bot
 print("Bot is running...")
