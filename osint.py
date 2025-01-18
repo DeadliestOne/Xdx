@@ -8,7 +8,7 @@ API_HASH = 'c109c77f5823c847b1aeb7fbd4990cc4'  # Replace with your Telegram API 
 BOT_TOKEN = '7881162036:AAFqwmF2ny9TEMhNdbIohy7oh507PkWk5Wg'  # Replace with your Bot Token
 
 # Channels to Join
-REQUIRED_CHANNELS = ["@BeAkatsuki", "@penguin_logs"]  # Replace with your channel usernames
+REQUIRED_CHANNELS = ["@SuiiBrohh", "@CprxD"]  # Replace with your channel usernames
 
 # Anime Video Links
 ANIME_VIDEO_LINKS = [
@@ -42,8 +42,10 @@ def check_user_in_channels(user_id, bot):
         try:
             member = bot.get_chat_member(channel, user_id)
             if member.status not in ["member", "administrator", "creator"]:
+                print(f"User not a member of {channel}")
                 return False
-        except:
+        except Exception as e:
+            print(f"Error checking membership for {channel}: {e}")
             return False
     return True
 
