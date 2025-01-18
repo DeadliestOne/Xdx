@@ -109,7 +109,7 @@ async def host_command(event):
 
 @bot.on(events.NewMessage)
 async def process_input(event):
-    """Processes user input for hosting or removing accounts."""
+    """Processes user input for hosting accounts."""
     user_id = event.sender_id
     if user_id not in user_states:
         return
@@ -185,21 +185,27 @@ async def remove_command(event):
         return
 
     account_list = '\n'.join([f"{i+1}. {phone}" for i, phone in enumerate(accounts.keys())])
-    await event.reply(f"Choose an account to remove:\n{account_list}")
+    await event.reply(f"Choose an account to remove by number:\n{account_list}")
 
     user_states[user_id] = {'step': 'awaiting_remove_choice'}
 
-    @bot.on(events.NewMessage)
-    async def handle_remove_choice(event):
-        try:
-            choice = int(event.text.strip()) - 1
-            phone_number = list(accounts.keys())[choice]
-            del accounts[phone_number]
-            await event.reply(f"Account {phone_number} has been removed.")
-        except (ValueError, IndexError):
-            await event.reply("Invalid choice.")
-        finally:
-            user_states.pop(user_id, None)
+
+@bot.on(events.NewMessage)
+async def process_remove(event):
+    """Handles remove choice."""
+    user_id = event.sender_id
+    if user_states.get(user_id, {}).get('step') != 'awaiting_remove_choice':
+        return
+
+    try:
+        choice = int(event.text.strip()) - 1
+        phone_number = list(accounts.keys())[choice]
+        del accounts[phone_number]
+        await event.reply(f"Account {phone_number} has been removed.")
+    except (ValueError, IndexError):
+        await event.reply("Invalid choice. Please try again.")
+    finally:
+        user_states.pop(user_id, None)
 
 
 @bot.on(events.NewMessage(pattern='/forward'))
@@ -215,21 +221,26 @@ async def forward_command(event):
         return
 
     account_list = '\n'.join([f"{i+1}. {phone}" for i, phone in enumerate(accounts.keys())])
-    await event.reply(f"Choose an account to forward ads from:\n{account_list}")
+    await event.reply(f"Choose an account to forward ads from by number:\n{account_list}")
 
     user_states[user_id] = {'step': 'awaiting_forward_choice'}
 
-    @bot.on(events.NewMessage)
-    async def handle_forward_choice(event):
-        try:
-            choice = int(event.text.strip()) - 1
-            phone_number = list(accounts.keys())[choice]
-            # Example for forwarding logic
-            await event.reply(f"Forwarding started for account {phone_number}.")
-        except (ValueError, IndexError):
-            await event.reply("Invalid choice.")
-        finally:
-            user_states.pop(user_id, None)
+
+@bot.on(events.NewMessage)
+async def process_forward(event):
+    """Handles forward choice."""
+    user_id = event.sender_id
+    if user_states.get(user_id, {}).get('step') != 'awaiting_forward_choice':
+        return
+
+    try:
+        choice = int(event.text.strip()) - 1
+        phone_number = list(accounts.keys())[choice]
+        await event.reply(f"Forwarding started for account {phone_number}.")
+    except (ValueError, IndexError):
+        await event.reply("Invalid choice. Please try again.")
+    finally:
+        user_states.pop(user_id, None)
 
 
 # Run the bot
