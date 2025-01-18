@@ -21,6 +21,9 @@ bot = TelegramClient('bot', API_ID, API_HASH)
 # This will hold the clients for each account
 clients = {}
 
+# Store the OTP requests
+otp_requests = {}
+
 # Function to log in and save session
 async def login(account_name, phone_number):
     # Create a unique session file for each account
@@ -35,7 +38,7 @@ async def login(account_name, phone_number):
     await client.connect()
     if not await client.is_user_authorized():
         await client.send_code_request(phone_number)
-        # Wait for the user to send the OTP
+        otp_requests[account_name] = phone_number  # Store the phone number for OTP request
         return f"OTP sent to {phone_number}. Please send the OTP to complete login."
 
     clients[account_name] = client
@@ -48,6 +51,7 @@ async def start(event):
                       "/login {account_name} {phone_number} - To login with a new account.\n"
                       "/accounts - List logged-in accounts.\n"
                       "/logout {account_name} - Log out from an account.\n"
+                      "/otp {account_name} - Get OTP for the account login.\n"
                       "/help - Show this message.")
 
 @bot.on(events.NewMessage(pattern='/login'))
@@ -61,6 +65,24 @@ async def login_command(event):
     account_name, phone_number = user_input[1], user_input[2]
     message = await login(account_name, phone_number)
     await event.reply(message)
+
+@bot.on(events.NewMessage(pattern='/otp'))
+async def otp_command(event):
+    """Gets the OTP for the account login."""
+    user_input = event.text.split()
+    if len(user_input) != 2:
+        await event.reply("Usage: /otp {account_name}")
+        return
+    
+    account_name = user_input[1]
+
+    # Check if the OTP was requested for the given account
+    if account_name not in otp_requests:
+        await event.reply(f"No OTP request found for {account_name}. Please log in first.")
+        return
+    
+    phone_number = otp_requests[account_name]
+    await event.reply(f"OTP sent to {phone_number}. Please check your phone and input the OTP.")
 
 @bot.on(events.NewMessage(pattern='/accounts'))
 async def accounts_command(event):
@@ -95,6 +117,7 @@ async def help_command(event):
                       "/login {account_name} {phone_number} - Log in with a new account.\n"
                       "/accounts - List logged-in accounts.\n"
                       "/logout {account_name} - Log out from an account.\n"
+                      "/otp {account_name} - Get OTP for the account login.\n"
                       "/help - Show this message.")
 
 # Start the bot
