@@ -24,6 +24,9 @@ clients = {}
 # Store the OTP requests
 otp_requests = {}
 
+# Store user input for OTP
+otp_inputs = {}
+
 # Function to log in and save session
 async def login(account_name, phone_number):
     # Create a unique session file for each account
@@ -44,6 +47,23 @@ async def login(account_name, phone_number):
     clients[account_name] = client
     return f"Account {account_name} logged in successfully!"
 
+async def verify_otp(account_name, otp):
+    """Verifies the OTP entered by the user"""
+    if account_name not in otp_requests:
+        return f"No OTP request found for {account_name}. Please log in first."
+
+    phone_number = otp_requests[account_name]
+    client = TelegramClient(f"{SESSION_FOLDER}/{account_name}_session", API_ID, API_HASH)
+    
+    try:
+        # Try to sign in using the OTP
+        await client.sign_in(phone_number, otp)
+        clients[account_name] = client  # Store the client after successful login
+        del otp_requests[account_name]  # Remove OTP request once verified
+        return f"Account {account_name} successfully logged in!"
+    except Exception as e:
+        return f"Failed to verify OTP for {account_name}: {str(e)}"
+
 @bot.on(events.NewMessage(pattern='/start'))
 async def start(event):
     """Welcomes the user and provides instructions."""
@@ -51,7 +71,7 @@ async def start(event):
                       "/login {account_name} {phone_number} - To login with a new account.\n"
                       "/accounts - List logged-in accounts.\n"
                       "/logout {account_name} - Log out from an account.\n"
-                      "/otp {account_name} - Get OTP for the account login.\n"
+                      "/otp {account_name} {otp} - Provide OTP to complete login.\n"
                       "/help - Show this message.")
 
 @bot.on(events.NewMessage(pattern='/login'))
@@ -70,19 +90,15 @@ async def login_command(event):
 async def otp_command(event):
     """Gets the OTP for the account login."""
     user_input = event.text.split()
-    if len(user_input) != 2:
-        await event.reply("Usage: /otp {account_name}")
+    if len(user_input) != 3:
+        await event.reply("Usage: /otp {account_name} {otp}")
         return
     
-    account_name = user_input[1]
+    account_name, otp = user_input[1], user_input[2]
 
-    # Check if the OTP was requested for the given account
-    if account_name not in otp_requests:
-        await event.reply(f"No OTP request found for {account_name}. Please log in first.")
-        return
-    
-    phone_number = otp_requests[account_name]
-    await event.reply(f"OTP sent to {phone_number}. Please check your phone and input the OTP.")
+    # Call the function to verify OTP
+    message = await verify_otp(account_name, otp)
+    await event.reply(message)
 
 @bot.on(events.NewMessage(pattern='/accounts'))
 async def accounts_command(event):
@@ -117,7 +133,7 @@ async def help_command(event):
                       "/login {account_name} {phone_number} - Log in with a new account.\n"
                       "/accounts - List logged-in accounts.\n"
                       "/logout {account_name} - Log out from an account.\n"
-                      "/otp {account_name} - Get OTP for the account login.\n"
+                      "/otp {account_name} {otp} - Provide OTP to complete login.\n"
                       "/help - Show this message.")
 
 # Start the bot
