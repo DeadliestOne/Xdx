@@ -1,7 +1,7 @@
 import os
+import psutil
 import asyncio
-import psutil  # For system stats
-from telethon import TelegramClient, events, Button
+from telethon import TelegramClient, events
 from telethon.errors import FloodWaitError
 from colorama import init
 import random
@@ -12,7 +12,7 @@ init(autoreset=True)
 # Replace with your API credentials
 USER_API_ID = "26416419"
 USER_API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"
-BOT_API_TOKEN = "7571130552:AAEG4RzTbLLibOS0wICJwgTkIFMF1d402uI"
+BOT_API_TOKEN = "8075027784:AAFJ80wXsED8_2oMlivB46RZZwI7sm7xcL4"
 
 CREDENTIALS_FOLDER = 'sessions'
 
@@ -20,7 +20,7 @@ CREDENTIALS_FOLDER = 'sessions'
 if not os.path.exists(CREDENTIALS_FOLDER):
     os.mkdir(CREDENTIALS_FOLDER)
 
-# Initialize Telegram bot without proxy support
+# Initialize Telegram bot
 bot = TelegramClient('bot_session', USER_API_ID, USER_API_HASH)
 
 # Define the bot owner and allowed users
@@ -31,39 +31,71 @@ ALLOWED_USERS = set([OWNER_ID])  # Initially allow only the owner
 user_states = {}
 accounts = {}  # Hosted accounts
 
+
 @bot.on(events.NewMessage(pattern='/start'))
-async def start(event):
-    """Welcome message with inline buttons."""
+async def start_command(event):
+    """Welcome message for users."""
     user_id = event.sender_id
     if user_id not in ALLOWED_USERS:
-        await event.reply("You are not authorized to use this bot. Contact @UncountableAura for access.")
+        await event.reply("You are not authorized to use this bot.")
         return
 
-    buttons = [
-        [Button.inline("Host New Account", b"host_account"), Button.inline("Forward Ads", b"forward_ads")],
-        [Button.inline("List Accounts", b"list_accounts"), Button.inline("Remove Account", b"remove_account")],
-        [Button.inline("Server Stats", b"server_stats")],
-    ]
-    await event.respond(
-        "Welcome! Use the buttons below to interact with the bot:",
-        buttons=buttons,
+    await event.reply(
+        "Welcome! Use the following commands:\n\n"
+        "/host - Host a new Telegram account\n"
+        "/forward - Start forwarding ads\n"
+        "/accounts - List hosted accounts\n"
+        "/remove - Remove a hosted account\n"
+        "/add {user_id} - Add a user to the allowed list (owner only)\n"
+        "/stats - View server stats and hosting capacity"
     )
 
-@bot.on(events.CallbackQuery)
-async def handle_buttons(event):
-    """Handle inline button interactions."""
-    if event.data == b"host_account":
-        await host_command(event)
-    elif event.data == b"forward_ads":
-        await forward_command(event)
-    elif event.data == b"list_accounts":
-        await accounts_command(event)
-    elif event.data == b"remove_account":
-        await remove_command(event)
-    elif event.data == b"server_stats":
-        await stats_command(event)
 
-# /host command: Starts hosting a new account
+@bot.on(events.NewMessage(pattern='/stats'))
+async def stats_command(event):
+    """Displays server stats and hosted accounts information."""
+    user_id = event.sender_id
+    if user_id not in ALLOWED_USERS:
+        await event.reply("You are not authorized to use this bot.")
+        return
+
+    # Fetch system stats
+    ram_usage = psutil.virtual_memory().percent
+    cpu_usage = psutil.cpu_percent(interval=1)
+    total_accounts = len(accounts)
+    hosting_capacity = max(0, 50 - total_accounts)  # Assuming a limit of 50 accounts
+
+    message = (
+        f"Server Stats:\n"
+        f"RAM Usage: {ram_usage}%\n"
+        f"CPU Usage: {cpu_usage}%\n"
+        f"Hosted Accounts: {total_accounts}\n"
+        f"Remaining Hosting Capacity: {hosting_capacity} accounts"
+    )
+    await event.reply(message)
+
+
+@bot.on(events.NewMessage(pattern='/add'))
+async def add_command(event):
+    """Adds a user to the allowed list."""
+    user_id = event.sender_id
+    if user_id != OWNER_ID:
+        await event.reply("You are not authorized to use this command.")
+        return
+
+    user_input = event.text.split()
+    if len(user_input) != 2:
+        await event.reply("Usage: /add {user_id}")
+        return
+
+    try:
+        new_user_id = int(user_input[1])
+        ALLOWED_USERS.add(new_user_id)
+        await event.reply(f"User {new_user_id} added to the allowed list.")
+    except ValueError:
+        await event.reply("Invalid user ID.")
+
+
 @bot.on(events.NewMessage(pattern='/host'))
 async def host_command(event):
     """Starts the hosting process for a new account."""
@@ -75,119 +107,71 @@ async def host_command(event):
     user_states[user_id] = {'step': 'awaiting_credentials'}
     await event.reply("Send your API ID, API Hash, and phone number in the format:\n`API_ID|API_HASH|PHONE_NUMBER`")
 
-# Process user credentials for hosting
+
 @bot.on(events.NewMessage)
-async def process_hosting(event):
+async def process_input(event):
+    """Processes user input for hosting or forwarding accounts."""
     user_id = event.sender_id
-    if user_id not in user_states or user_states[user_id].get('step') != 'awaiting_credentials':
+    if user_id not in user_states:
         return
 
-    data = event.text.split('|')
-    if len(data) != 3:
-        await event.reply("Invalid format. Please send data as:\n`API_ID|API_HASH|PHONE_NUMBER`")
-        return
+    state = user_states[user_id]
 
-    api_id, api_hash, phone_number = data
-    session_name = f"{CREDENTIALS_FOLDER}/session_{user_id}_{phone_number}"
-    client = TelegramClient(session_name, int(api_id), api_hash)
+    if state['step'] == 'awaiting_credentials':
+        data = event.text.split('|')
+        if len(data) != 3:
+            await event.reply("Invalid format. Please send data as:\n`API_ID|API_HASH|PHONE_NUMBER`")
+            return
 
-    try:
-        await client.connect()
-        if not await client.is_user_authorized():
-            # Send OTP
-            await client.send_code_request(phone_number)
-            user_states[user_id].update({
-                'step': 'awaiting_otp',
-                'client': client,
-                'phone_number': phone_number
-            })
-            await event.reply("OTP sent to your phone. Reply with the OTP.")
-        else:
-            # Account already authorized
-            accounts[phone_number] = client
-            await event.reply(f"Account {phone_number} is already authorized and hosted!")
+        api_id, api_hash, phone_number = data
+        session_name = f"{CREDENTIALS_FOLDER}/session_{user_id}_{phone_number}"
+        client = TelegramClient(session_name, api_id, api_hash)
+
+        try:
+            await client.connect()
+            if not await client.is_user_authorized():
+                await client.send_code_request(phone_number)
+                state.update({'step': 'awaiting_otp', 'client': client, 'phone_number': phone_number})
+                await event.reply("OTP sent to your phone. Reply with the OTP.")
+            else:
+                accounts[phone_number] = client
+                await client.disconnect()
+                await event.reply(f"Account {phone_number} successfully hosted!")
+                del user_states[user_id]
+        except Exception as e:
+            await event.reply(f"Error: {e}")
             del user_states[user_id]
-    except Exception as e:
-        await event.reply(f"Error during connection: {e}")
-        del user_states[user_id]
 
-# Handle OTP input for authorization
-@bot.on(events.NewMessage)
-async def handle_otp(event):
-    user_id = event.sender_id
-    if user_id not in user_states or user_states[user_id].get('step') != 'awaiting_otp':
-        return
+    elif state['step'] == 'awaiting_otp':
+        otp = event.text.strip()
+        client = state['client']
+        phone_number = state['phone_number']
 
-    otp = event.text.strip()
-    client = user_states[user_id]['client']
-    phone_number = user_states[user_id]['phone_number']
-
-    try:
-        # Complete login with the provided OTP
-        await client.sign_in(phone=phone_number, code=otp)
-        accounts[phone_number] = client
-        await event.reply(f"Account {phone_number} has been successfully hosted!")
-        del user_states[user_id]
-    except Exception as e:
-        await event.reply(f"Error during OTP verification: {e}")
-        del user_states[user_id]
+        try:
+            await client.sign_in(phone_number, otp)
+            accounts[phone_number] = client
+            await event.reply(f"Account {phone_number} successfully hosted!")
+            del user_states[user_id]
+        except Exception as e:
+            await event.reply(f"Error: {e}")
+            del user_states[user_id]
 
 
-# /forward command: Starts forwarding process
-@bot.on(events.NewMessage(pattern='/forward'))
-async def forward_command(event):
-    """Starts the ad forwarding process."""
+@bot.on(events.NewMessage(pattern='/accounts'))
+async def accounts_command(event):
+    """Lists all hosted accounts."""
     user_id = event.sender_id
     if user_id not in ALLOWED_USERS:
         await event.reply("You are not authorized to use this command.")
         return
 
     if not accounts:
-        await event.reply("No accounts are hosted. Use /host to add accounts.")
+        await event.reply("No accounts are hosted.")
         return
 
-    account_list = '\n'.join([f"{i + 1}. {phone}" for i, phone in enumerate(accounts.keys())])
-    await event.reply(f"Choose an account to forward ads from:\n{account_list}\nReply with the number of the account.")
-    user_states[user_id] = {'step': 'awaiting_account_choice'}
+    account_list = '\n'.join([f"{i+1}. {phone}" for i, phone in enumerate(accounts.keys())])
+    await event.reply(f"Hosted accounts:\n{account_list}")
 
-# Handle forwarding choices
-@bot.on(events.NewMessage)
-async def handle_forwarding(event):
-    user_id = event.sender_id
-    if user_id not in user_states or user_states[user_id].get('step') != 'awaiting_account_choice':
-        return
-
-    try:
-        account_choice = int(event.text.strip()) - 1
-        if 0 <= account_choice < len(accounts):
-            selected_account = list(accounts.keys())[account_choice]
-            await event.reply(f"Selected account {selected_account}. Forwarding will start shortly.")
-            # Implement forwarding logic here
-            del user_states[user_id]
-        else:
-            await event.reply("Invalid account number.")
-    except ValueError:
-        await event.reply("Please provide a valid number.")
-
-# /stats command: Displays server statistics
-@bot.on(events.NewMessage(pattern='/stats'))
-async def stats_command(event):
-    """Displays server statistics."""
-    user_id = event.sender_id
-    if user_id not in ALLOWED_USERS:
-        await event.reply("You are not authorized to use this command.")
-        return
-
-    cpu_usage = psutil.cpu_percent(interval=1)
-    ram = psutil.virtual_memory()
-    disk = psutil.disk_usage('/')
-    stats = (
-        f"**Server Stats:**\n\n"
-        f"**CPU Usage:** {cpu_usage}%\n"
-        f"**RAM Usage:** {ram.used / (1024**3):.2f} GB / {ram.total / (1024**3):.2f} GB ({ram.percent}%)\n"
-        f"**Disk Usage:** {disk.used / (1024**3):.2f} GB / {disk.total / (1024**3):.2f} GB ({disk.percent}%)"
-    )
-    await event.reply(stats)
 
 # Run the bot
 print("Bot is running...")
