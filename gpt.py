@@ -89,22 +89,49 @@ async def process_hosting(event):
 
     api_id, api_hash, phone_number = data
     session_name = f"{CREDENTIALS_FOLDER}/session_{user_id}_{phone_number}"
-    client = TelegramClient(session_name, api_id, api_hash)
+    client = TelegramClient(session_name, int(api_id), api_hash)
 
     try:
         await client.connect()
         if not await client.is_user_authorized():
+            # Send OTP
             await client.send_code_request(phone_number)
-            user_states[user_id].update({'step': 'awaiting_otp', 'client': client, 'phone_number': phone_number})
+            user_states[user_id].update({
+                'step': 'awaiting_otp',
+                'client': client,
+                'phone_number': phone_number
+            })
             await event.reply("OTP sent to your phone. Reply with the OTP.")
         else:
+            # Account already authorized
             accounts[phone_number] = client
-            await client.disconnect()
             await event.reply(f"Account {phone_number} is already authorized and hosted!")
             del user_states[user_id]
     except Exception as e:
-        await event.reply(f"Error: {e}")
+        await event.reply(f"Error during connection: {e}")
         del user_states[user_id]
+
+# Handle OTP input for authorization
+@bot.on(events.NewMessage)
+async def handle_otp(event):
+    user_id = event.sender_id
+    if user_id not in user_states or user_states[user_id].get('step') != 'awaiting_otp':
+        return
+
+    otp = event.text.strip()
+    client = user_states[user_id]['client']
+    phone_number = user_states[user_id]['phone_number']
+
+    try:
+        # Complete login with the provided OTP
+        await client.sign_in(phone=phone_number, code=otp)
+        accounts[phone_number] = client
+        await event.reply(f"Account {phone_number} has been successfully hosted!")
+        del user_states[user_id]
+    except Exception as e:
+        await event.reply(f"Error during OTP verification: {e}")
+        del user_states[user_id]
+
 
 # /forward command: Starts forwarding process
 @bot.on(events.NewMessage(pattern='/forward'))
