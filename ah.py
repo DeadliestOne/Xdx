@@ -46,16 +46,10 @@ def get_all_accounts():
 def remove_account_from_db(phone_number):
     accounts_collection.delete_one({"phone_number": phone_number})
 
-@bot.on(events.NewMessage(pattern='/start'))
-async def start_command(event):
-    """Welcome message with inline buttons."""
-    user_id = event.sender_id
-    if user_id not in ALLOWED_USERS:
-        await event.reply("🚫 You are not authorized to use this bot.")
-        return
-
-    await event.reply(
-        "🤖 **Welcome to the Hosting Bot!**\nChoose an option below:",
+async def main_menu(event):
+    """Displays the main menu."""
+    await event.edit(
+        "🤖 **Main Menu**\nChoose an option below:",
         buttons=[
             [Button.inline("📡 Host Account", b"host_account")],
             [Button.inline("🔄 List Accounts", b"list_accounts")],
@@ -65,25 +59,14 @@ async def start_command(event):
         ]
     )
 
-@bot.on(events.NewMessage(pattern='/add'))
-async def add_command(event):
-    """Adds a user to the allowed list."""
+@bot.on(events.NewMessage(pattern='/start'))
+async def start_command(event):
+    """Welcome message with inline buttons."""
     user_id = event.sender_id
-    if user_id != OWNER_ID:
-        await event.reply("🚫 You are not authorized to use this command.")
+    if user_id not in ALLOWED_USERS:
+        await event.reply("🚫 You are not authorized to use this bot.")
         return
-
-    user_input = event.text.split()
-    if len(user_input) != 2:
-        await event.reply("⚠️ Usage: /add {user_id}")
-        return
-
-    try:
-        new_user_id = int(user_input[1])
-        ALLOWED_USERS.add(new_user_id)
-        await event.reply(f"✅ User {new_user_id} added to the allowed list.")
-    except ValueError:
-        await event.reply("❌ Invalid user ID.")
+    await main_menu(event)
 
 @bot.on(events.CallbackQuery(data=b"host_account"))
 async def host_account_callback(event):
@@ -94,7 +77,10 @@ async def host_account_callback(event):
         return
 
     user_states[user_id] = {'step': 'awaiting_credentials'}
-    await event.edit("📩 Send your API ID, API Hash, and phone number in the format:\n`API_ID|API_HASH|PHONE_NUMBER`")
+    await event.edit(
+        "📩 Send your API ID, API Hash, and phone number in the format:\n`API_ID|API_HASH|PHONE_NUMBER`",
+        buttons=[Button.inline("🔙 Back", b"back_to_menu")]
+    )
 
 @bot.on(events.CallbackQuery(data=b"list_accounts"))
 async def list_accounts_callback(event):
@@ -106,11 +92,17 @@ async def list_accounts_callback(event):
 
     accounts = get_all_accounts()
     if not accounts:
-        await event.edit("📭 **No accounts are currently hosted.**")
+        await event.edit(
+            "📭 **No accounts are currently hosted.**",
+            buttons=[Button.inline("🔙 Back", b"back_to_menu")]
+        )
         return
 
     account_list = '\n'.join([f"{i+1}. {account['phone_number']}" for i, account in enumerate(accounts)])
-    await event.edit(f"📋 **Hosted Accounts:**\n{account_list}")
+    await event.edit(
+        f"📋 **Hosted Accounts:**\n{account_list}",
+        buttons=[Button.inline("🔙 Back", b"back_to_menu")]
+    )
 
 @bot.on(events.CallbackQuery(data=b"server_stats"))
 async def server_stats_callback(event):
@@ -132,7 +124,10 @@ async def server_stats_callback(event):
         f"📱 Hosted Accounts: {total_accounts}\n"
         f"🔓 Remaining Capacity: {hosting_capacity} accounts"
     )
-    await event.edit(message)
+    await event.edit(
+        message,
+        buttons=[Button.inline("🔙 Back", b"back_to_menu")]
+    )
 
 @bot.on(events.CallbackQuery(data=b"add_user"))
 async def add_user_callback(event):
@@ -143,22 +138,10 @@ async def add_user_callback(event):
         return
 
     user_states[user_id] = {'step': 'awaiting_add_user'}
-    await event.edit("👤 Send the user ID of the person you want to add.")
-
-@bot.on(events.NewMessage)
-async def handle_add_user(event):
-    """Handles adding a new user."""
-    user_id = event.sender_id
-    if user_id not in user_states or user_states[user_id].get('step') != 'awaiting_add_user':
-        return
-
-    try:
-        new_user_id = int(event.text.strip())
-        ALLOWED_USERS.add(new_user_id)
-        await event.reply(f"✅ User {new_user_id} has been added to the allowed list.")
-        del user_states[user_id]
-    except ValueError:
-        await event.reply("❌ Invalid user ID.")
+    await event.edit(
+        "👤 Send the user ID of the person you want to add.",
+        buttons=[Button.inline("🔙 Back", b"back_to_menu")]
+    )
 
 @bot.on(events.CallbackQuery(data=b"remove_account"))
 async def remove_account_callback(event):
@@ -169,19 +152,39 @@ async def remove_account_callback(event):
         return
 
     user_states[user_id] = {'step': 'awaiting_remove_account'}
-    await event.edit("❌ Send the phone number of the account you want to remove.")
+    await event.edit(
+        "❌ Send the phone number of the account you want to remove.",
+        buttons=[Button.inline("🔙 Back", b"back_to_menu")]
+    )
+
+@bot.on(events.CallbackQuery(data=b"back_to_menu"))
+async def back_to_menu_callback(event):
+    """Handles navigation back to the main menu."""
+    await main_menu(event)
 
 @bot.on(events.NewMessage)
-async def handle_remove_account(event):
-    """Handles account removal."""
+async def handle_user_input(event):
+    """Handles dynamic user input."""
     user_id = event.sender_id
-    if user_id not in user_states or user_states[user_id].get('step') != 'awaiting_remove_account':
+    if user_id not in user_states:
         return
 
-    phone_number = event.text.strip()
-    remove_account_from_db(phone_number)
-    await event.reply(f"✅ Account {phone_number} has been removed.")
-    del user_states[user_id]
+    state = user_states[user_id]
+
+    if state.get('step') == 'awaiting_add_user':
+        try:
+            new_user_id = int(event.text.strip())
+            ALLOWED_USERS.add(new_user_id)
+            await event.reply(f"✅ User {new_user_id} has been added to the allowed list.")
+            del user_states[user_id]
+        except ValueError:
+            await event.reply("❌ Invalid user ID.")
+
+    elif state.get('step') == 'awaiting_remove_account':
+        phone_number = event.text.strip()
+        remove_account_from_db(phone_number)
+        await event.reply(f"✅ Account {phone_number} has been removed.")
+        del user_states[user_id]
 
 # Run the bot
 print("Bot is running...")
