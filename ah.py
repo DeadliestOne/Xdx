@@ -3,12 +3,6 @@ import psutil
 from telethon import TelegramClient, events
 from pymongo import MongoClient
 from colorama import init
-from telethon.errors import (
-    PhoneCodeFloodError,
-    PhoneCodeInvalidError,
-    SessionPasswordNeededError,
-    RpcCallFailError,
-)
 from telethon.tl.custom import Button
 
 # Initialize colorama for colored output
