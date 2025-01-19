@@ -1,16 +1,18 @@
 import os
 import psutil
+import asyncio
 from telethon import TelegramClient, events
 from telethon.errors import FloodWaitError
+from telethon.tl.custom import Button
 from colorama import init
 
 # Initialize colorama for colored output
 init(autoreset=True)
 
 # Replace with your API credentials
-USER_API_ID = "26416419"
-USER_API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"
-BOT_API_TOKEN = "7571130552:AAFarufThZfioBIb5xzkHn41LZJqHyx3Gx8"
+USER_API_ID = "26416419"  # Replace with your API ID
+USER_API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"  # Replace with your API Hash
+BOT_API_TOKEN = "7881162036:AAFqwmF2ny9TEMhNdbIohy7oh507PkWk5Wg"  # Replace with your Bot Token
 
 CREDENTIALS_FOLDER = 'sessions'
 
@@ -48,12 +50,12 @@ async def start_command(event):
         "👉 Use the buttons below to navigate.",
         buttons=[
             [  # Main Menu Buttons
-                ("➕ Host Account", "host"),
-                ("📊 Server Stats", "stats"),
+                Button.inline("➕ Host Account", b"host"),
+                Button.inline("📊 Server Stats", b"stats"),
             ],
             [
-                ("📋 List Accounts", "accounts"),
-                ("👥 Manage Users", "manage_users"),
+                Button.inline("📋 List Accounts", b"accounts"),
+                Button.inline("👥 Manage Users", b"manage_users"),
             ],
         ]
     )
@@ -79,44 +81,7 @@ async def stats_command(event):
         f"⚙️ **CPU Usage:** {cpu_usage}%\n"
         f"📂 **Hosted Accounts:** {total_accounts}\n"
         f"🔹 **Remaining Capacity:** {hosting_capacity} accounts",
-        buttons=[("🔙 Back to Menu", "menu")],
-    )
-
-
-@bot.on(events.NewMessage(pattern='/host'))
-async def host_command(event):
-    """Starts the hosting process for a new account."""
-    user_id = event.sender_id
-    if user_id not in ALLOWED_USERS:
-        await event.reply("❌ You are not authorized to use this bot.")
-        return
-
-    user_states[user_id] = {'step': 'awaiting_credentials'}
-    await event.respond(
-        "📩 **To host a new account:**\n\n"
-        "Please send your details in the following format:\n\n"
-        "`API_ID|API_HASH|PHONE_NUMBER`\n\n"
-        "Example: `123456|abc123xyz|+1234567890`",
-        buttons=[("🔙 Back to Menu", "menu")],
-    )
-
-
-@bot.on(events.NewMessage(pattern='/accounts'))
-async def accounts_command(event):
-    """Lists all hosted accounts."""
-    user_id = event.sender_id
-    if user_id not in ALLOWED_USERS:
-        await event.reply("❌ You are not authorized to use this bot.")
-        return
-
-    if not accounts:
-        await event.respond("📂 **No accounts are currently hosted.**", buttons=[("🔙 Back to Menu", "menu")])
-        return
-
-    account_list = '\n'.join([f"{i+1}. {phone}" for i, phone in enumerate(accounts.keys())])
-    await event.respond(
-        f"📋 **Hosted Accounts:**\n\n{account_list}",
-        buttons=[("🔙 Back to Menu", "menu")],
+        buttons=[Button.inline("🔙 Back to Menu", b"menu")],
     )
 
 
@@ -136,9 +101,92 @@ async def add_command(event):
     try:
         new_user_id = int(user_input[1])
         ALLOWED_USERS.add(new_user_id)
-        await event.respond(f"✅ User `{new_user_id}` has been added to the allowed list.", buttons=[("🔙 Back to Menu", "menu")])
+        await event.reply(f"✅ User {new_user_id} added to the allowed list.")
     except ValueError:
         await event.reply("❌ Invalid user ID.")
+
+
+@bot.on(events.NewMessage(pattern='/host'))
+async def host_command(event):
+    """Starts the hosting process for a new account."""
+    user_id = event.sender_id
+    if user_id not in ALLOWED_USERS:
+        await event.reply("❌ You are not authorized to use this command.")
+        return
+
+    user_states[user_id] = {'step': 'awaiting_credentials'}
+    await event.reply("📲 **Send your API ID, API Hash, and phone number** in the format:\n`API_ID|API_HASH|PHONE_NUMBER`")
+
+
+@bot.on(events.NewMessage)
+async def process_input(event):
+    """Processes user input for hosting or forwarding accounts."""
+    user_id = event.sender_id
+    if user_id not in user_states:
+        return
+
+    state = user_states[user_id]
+
+    if state['step'] == 'awaiting_credentials':
+        data = event.text.split('|')
+        if len(data) != 3:
+            await event.reply("❌ Invalid format. Please send data as:\n`API_ID|API_HASH|PHONE_NUMBER`")
+            return
+
+        api_id, api_hash, phone_number = data
+        session_name = f"{CREDENTIALS_FOLDER}/session_{user_id}_{phone_number}"
+        client = TelegramClient(session_name, api_id, api_hash)
+
+        try:
+            await client.connect()
+            if not await client.is_user_authorized():
+                await client.send_code_request(phone_number)
+                state.update({'step': 'awaiting_otp', 'client': client, 'phone_number': phone_number})
+                await event.reply("🔑 OTP sent to your phone. Reply with the OTP.")
+            else:
+                accounts[phone_number] = client
+                await client.disconnect()
+                await event.reply(f"✅ Account {phone_number} successfully hosted!")
+                del user_states[user_id]
+        except Exception as e:
+            await event.reply(f"❌ Error: {e}")
+            del user_states[user_id]
+
+    elif state['step'] == 'awaiting_otp':
+        otp = event.text.strip()
+        client = state['client']
+        phone_number = state['phone_number']
+
+        try:
+            await client.sign_in(phone_number, otp)
+            accounts[phone_number] = client
+            await event.reply(f"✅ Account {phone_number} successfully hosted!")
+            del user_states[user_id]
+        except Exception as e:
+            await event.reply(f"❌ Error: {e}")
+            del user_states[user_id]
+
+
+@bot.on(events.NewMessage(pattern='/accounts'))
+async def accounts_command(event):
+    """Lists all hosted accounts."""
+    user_id = event.sender_id
+    if user_id not in ALLOWED_USERS:
+        await event.reply("❌ You are not authorized to use this bot.")
+        return
+
+    if not accounts:
+        await event.respond(
+            "📂 **No accounts are currently hosted.**", 
+            buttons=[Button.inline("🔙 Back to Menu", b"menu")]
+        )
+        return
+
+    account_list = '\n'.join([f"{i+1}. {phone}" for i, phone in enumerate(accounts.keys())])
+    await event.respond(
+        f"📋 **Hosted Accounts:**\n\n{account_list}",
+        buttons=[Button.inline("🔙 Back to Menu", b"menu")],
+    )
 
 
 @bot.on(events.CallbackQuery)
@@ -160,12 +208,11 @@ async def callback_handler(event):
             "Use the following commands:\n"
             "/add {user_id} - Add a new user\n"
             "/remove {user_id} - Remove a user\n",
-            buttons=[("🔙 Back to Menu", "menu")],
+            buttons=[Button.inline("🔙 Back to Menu", b"menu")],
         )
 
 
 # Run the bot
-print("🤖 Bot is running...")
+print("Bot is running...")
 bot.start(bot_token=BOT_API_TOKEN)
 bot.run_until_disconnected()
-    
