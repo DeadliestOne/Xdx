@@ -68,54 +68,19 @@ async def start_command(event):
         return
     await main_menu(event)
 
-@bot.on(events.CallbackQuery(data=b"host_account"))
-async def host_account_callback(event):
-    """Starts the hosting process for a new account."""
+@bot.on(events.NewMessage(pattern='/stats'))
+async def stats_command(event):
+    """Displays server stats and hosted accounts information."""
     user_id = event.sender_id
     if user_id not in ALLOWED_USERS:
-        await event.answer("🚫 You are not authorized to use this feature.", alert=True)
+        await event.reply("🚫 You are not authorized to use this bot.")
         return
 
-    user_states[user_id] = {'step': 'awaiting_credentials'}
-    await event.edit(
-        "📩 Send your API ID, API Hash, and phone number in the format:\n`API_ID|API_HASH|PHONE_NUMBER`",
-        buttons=[Button.inline("🔙 Back", b"back_to_menu")]
-    )
-
-@bot.on(events.CallbackQuery(data=b"list_accounts"))
-async def list_accounts_callback(event):
-    """Lists all hosted accounts."""
-    user_id = event.sender_id
-    if user_id not in ALLOWED_USERS:
-        await event.answer("🚫 You are not authorized to use this feature.", alert=True)
-        return
-
-    accounts = get_all_accounts()
-    if not accounts:
-        await event.edit(
-            "📭 **No accounts are currently hosted.**",
-            buttons=[Button.inline("🔙 Back", b"back_to_menu")]
-        )
-        return
-
-    account_list = '\n'.join([f"{i+1}. {account['phone_number']}" for i, account in enumerate(accounts)])
-    await event.edit(
-        f"📋 **Hosted Accounts:**\n{account_list}",
-        buttons=[Button.inline("🔙 Back", b"back_to_menu")]
-    )
-
-@bot.on(events.CallbackQuery(data=b"server_stats"))
-async def server_stats_callback(event):
-    """Displays server stats and hosting capacity."""
-    user_id = event.sender_id
-    if user_id not in ALLOWED_USERS:
-        await event.answer("🚫 You are not authorized to use this feature.", alert=True)
-        return
-
+    # Fetch system stats
     ram_usage = psutil.virtual_memory().percent
     cpu_usage = psutil.cpu_percent(interval=1)
     total_accounts = accounts_collection.count_documents({})
-    hosting_capacity = max(0, 50 - total_accounts)
+    hosting_capacity = max(0, 50 - total_accounts)  # Assuming a limit of 50 accounts
 
     message = (
         f"📊 **Server Stats**:\n"
@@ -124,82 +89,136 @@ async def server_stats_callback(event):
         f"📱 Hosted Accounts: {total_accounts}\n"
         f"🔓 Remaining Capacity: {hosting_capacity} accounts"
     )
-    await event.edit(
-        message,
-        buttons=[Button.inline("🔙 Back", b"back_to_menu")]
-    )
+    await event.reply(message)
 
-@bot.on(events.CallbackQuery(data=b"add_user"))
-async def add_user_callback(event):
-    """Prompts the owner to add a new user."""
-    user_id = event.sender_id
-    if user_id != OWNER_ID:
-        await event.answer("🚫 You are not authorized to use this feature.", alert=True)
-        return
-
-    user_states[user_id] = {'step': 'awaiting_add_user'}
-    await event.edit(
-        "👤 Send the user ID of the person you want to add.",
-        buttons=[Button.inline("🔙 Back", b"back_to_menu")]
-    )
-
-@bot.on(events.CallbackQuery(data=b"remove_account"))
-async def remove_account_callback(event):
-    """Prompts the user to remove an account."""
+@bot.on(events.NewMessage(pattern='/host'))
+async def host_command(event):
+    """Starts the hosting process for a new account."""
     user_id = event.sender_id
     if user_id not in ALLOWED_USERS:
-        await event.answer("🚫 You are not authorized to use this feature.", alert=True)
+        await event.reply("🚫 You are not authorized to use this command.")
         return
 
-    user_states[user_id] = {'step': 'awaiting_remove_account'}
-    await event.edit(
-        "❌ Send the phone number of the account you want to remove.",
-        buttons=[Button.inline("🔙 Back", b"back_to_menu")]
-    )
-
-@bot.on(events.CallbackQuery(data=b"back_to_menu"))
-async def back_to_menu_callback(event):
-    """Handles navigation back to the main menu."""
-    await main_menu(event)
+    user_states[user_id] = {'step': 'awaiting_credentials'}
+    await event.reply("📩 Send your API ID, API Hash, and phone number in the format:\n`API_ID|API_HASH|PHONE_NUMBER`")
 
 @bot.on(events.NewMessage)
-async def handle_user_input(event):
-    """Handles dynamic user input."""
+async def process_input(event):
+    """Processes user input for hosting accounts."""
     user_id = event.sender_id
     if user_id not in user_states:
         return
 
     state = user_states[user_id]
 
-    if state.get('step') == 'awaiting_add_user':
+    if state['step'] == 'awaiting_credentials':
+        data = event.text.split('|')
+        if len(data) != 3:
+            await event.reply("⚠️ Invalid format. Please send data as:\n`API_ID|API_HASH|PHONE_NUMBER`")
+            return
+
+        api_id, api_hash, phone_number = data
+        session_name = f"session_{phone_number}"
+        client = TelegramClient(session_name, api_id, api_hash)
+
         try:
-            new_user_id = int(event.text.strip())
-            ALLOWED_USERS.add(new_user_id)
-            await event.reply(f"✅ User {new_user_id} has been added to the allowed list.")
+            await client.connect()
+            if not await client.is_user_authorized():
+                await client.send_code_request(phone_number)
+                state.update({'step': 'awaiting_otp', 'client': client, 'phone_number': phone_number})
+                await event.reply("📲 OTP sent to your phone. Reply with the OTP.")
+            else:
+                save_account_to_db(api_id, api_hash, phone_number)
+                await client.disconnect()
+                await event.reply(f"✅ Account {phone_number} successfully hosted!")
+                del user_states[user_id]
+        except Exception as e:
+            await event.reply(f"❌ Error: {e}")
             del user_states[user_id]
-        except ValueError:
-            await event.reply("❌ Invalid user ID.")
 
-    elif state.get('step') == 'awaiting_remove_account':
-        phone_number = event.text.strip()
-        remove_account_from_db(phone_number)
-        await event.reply(f"✅ Account {phone_number} has been removed.")
-        del user_states[user_id]
+    elif state['step'] == 'awaiting_otp':
+        otp = event.text.strip()
+        client = state['client']
+        phone_number = state['phone_number']
 
-# Bot startup message to owner
+        try:
+            await client.sign_in(phone_number, otp)
+            save_account_to_db(client.api_id, client.api_hash, phone_number)
+            await event.reply(f"✅ Account {phone_number} successfully hosted!")
+            del user_states[user_id]
+        except Exception as e:
+            await event.reply(f"❌ Error: {e}")
+            del user_states[user_id]
+
+@bot.on(events.NewMessage(pattern='/accounts'))
+async def accounts_command(event):
+    """Lists all hosted accounts."""
+    user_id = event.sender_id
+    if user_id not in ALLOWED_USERS:
+        await event.reply("🚫 You are not authorized to use this command.")
+        return
+
+    accounts = get_all_accounts()
+    if not accounts:
+        await event.reply("📭 No accounts are currently hosted.")
+        return
+
+    account_list = '\n'.join([f"{i+1}. {account['phone_number']}" for i, account in enumerate(accounts)])
+    await event.reply(f"📋 **Hosted Accounts**:\n{account_list}")
+
+@bot.on(events.NewMessage(pattern='/remove'))
+async def remove_command(event):
+    """Removes a hosted account."""
+    user_id = event.sender_id
+    if user_id not in ALLOWED_USERS:
+        await event.reply("🚫 You are not authorized to use this command.")
+        return
+
+    await event.reply("🔢 Send the phone number of the account you want to remove.")
+
+    user_states[user_id] = {'step': 'awaiting_remove'}
+
+@bot.on(events.NewMessage)
+async def handle_remove(event):
+    """Handles account removal."""
+    user_id = event.sender_id
+    if user_id not in user_states or user_states[user_id].get('step') != 'awaiting_remove':
+        return
+
+    phone_number = event.text.strip()
+    remove_account_from_db(phone_number)
+    await event.reply(f"✅ Account {phone_number} has been removed.")
+    del user_states[user_id]
+
+@bot.on(events.NewMessage(pattern='/add'))
+async def add_command(event):
+    """Adds a user to the allowed list."""
+    user_id = event.sender_id
+    if user_id != OWNER_ID:
+        await event.reply("🚫 You are not authorized to use this command.")
+        return
+
+    user_input = event.text.split()
+    if len(user_input) != 2:
+        await event.reply("⚠️ Usage: /add {user_id}")
+        return
+
+    try:
+        new_user_id = int(user_input[1])
+        ALLOWED_USERS.add(new_user_id)
+        await event.reply(f"User {new_user_id} added to the allowed list.")
+    except ValueError:
+        await event.reply("❌ Invalid user ID.")
+
 async def send_startup_message():
-    ram_usage = psutil.virtual_memory().percent
+    """Sends a message when the bot starts up."""
+    owner = await bot.get_entity(OWNER_ID)
     cpu_usage = psutil.cpu_percent(interval=1)
-    total_accounts = accounts_collection.count_documents({})
-
-    message = (
-        f"🚀 **Bot Started**\n"
-        f"🤖 Users: {len(ALLOWED_USERS)}\n"
-        f"💾 RAM Usage: {ram_usage}%\n"
-        f"⚙️ CPU Usage: {cpu_usage}%\n"
-        f"📱 Hosted Accounts: {total_accounts}"
-    )
-    await bot.send_message(OWNER_ID, message)
+    ram_usage = psutil.virtual_memory().percent
+    await bot.send_message(owner, f"✅ Bot Started!\n\n"
+                                  f"⚙️ CPU Usage: {cpu_usage}%\n"
+                                  f"💾 RAM Usage: {ram_usage}%\n"
+                                  f"👤 Bot is running successfully.")
 
 # Run the bot
 print("Bot is starting...")
