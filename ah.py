@@ -65,11 +65,11 @@ async def start_command(event):
         "📊 /stats - View server stats\n"
         "👤 /add {user_id} - Add a user to the allowed list (owner only)",
         buttons=[
-            [Button.text("Host New Account", resize=True)],
-            [Button.text("List Hosted Accounts", resize=True)],
-            [Button.text("Remove Account", resize=True)],
-            [Button.text("View Stats", resize=True)],
-            [Button.text("Add User", resize=True)]
+            [Button.inline("Host New Account", b'host')],
+            [Button.inline("List Hosted Accounts", b'accounts')],
+            [Button.inline("Remove Account", b'remove')],
+            [Button.inline("View Stats", b'stats')],
+            [Button.inline("Add User", b'add')]
         ]
     )
 
@@ -105,7 +105,7 @@ async def host_command(event):
     await event.reply(
         "📩 Send your API ID, API Hash, and phone number in the format:\n`API_ID|API_HASH|PHONE_NUMBER`\n\n"
         "— This bot made by [dev](t.me/Uncountableaura)",
-        buttons=[Button.text("Cancel", resize=True)]
+        buttons=[Button.inline("Cancel", b'cancel')]
     )
 
 @bot.on(events.NewMessage)
@@ -209,6 +209,35 @@ async def add_command(event):
         await event.reply(f"✅ User {new_user_id} added to the allowed list.")
     except ValueError:
         await event.reply("❌ Invalid user ID.")
+
+# Handle button presses
+@bot.on(events.CallbackQuery)
+async def button_click(event):
+    if event.data == b'host':
+        await event.respond("📩 Please send your API ID, API Hash, and phone number in the format:\n`API_ID|API_HASH|PHONE_NUMBER`")
+    elif event.data == b'accounts':
+        accounts = get_all_accounts()
+        if not accounts:
+            await event.respond("📭 No accounts are currently hosted.")
+        else:
+            account_list = '\n'.join([f"{i+1}. {account['phone_number']}" for i, account in enumerate(accounts)])
+            await event.respond(f"📋 **Hosted Accounts**:\n{account_list}")
+    elif event.data == b'remove':
+        await event.respond("🔢 Send the phone number of the account you want to remove.")
+    elif event.data == b'stats':
+        ram_usage = psutil.virtual_memory().percent
+        cpu_usage = psutil.cpu_percent(interval=1)
+        total_accounts = accounts_collection.count_documents({})
+        hosting_capacity = max(0, 50 - total_accounts)
+
+        message = (
+            f"📊 **Server Stats**:\n"
+            f"💾 RAM Usage: {ram_usage}%\n"
+            f"⚙️ CPU Usage: {cpu_usage}%\n"
+            f"📱 Hosted Accounts: {total_accounts}\n"
+            f"🔓 Remaining Capacity: {hosting_capacity} accounts"
+        )
+        await event.respond(message)
 
 # Run the bot
 print("Bot is running...")
