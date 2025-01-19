@@ -1,8 +1,12 @@
-from telethon import TelegramClient, events, Button
-from telethon.errors import SessionPasswordNeededError
-from pymongo import MongoClient
+import asyncio
 import os
 import json
+from telethon import TelegramClient, events, Button
+from telethon.errors import SessionPasswordNeededError, PhoneCodeFloodError
+from telethon.tl.functions.channels import LeaveChannelRequest
+from telethon.tl.functions.messages import GetHistoryRequest
+from telethon.tl.types import PeerUser
+from pymongo import MongoClient
 
 # MongoDB Configuration
 MONGO_URI = "mongodb+srv://uchitraprobot2:Orion@cluster0.3es1c.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
@@ -115,6 +119,49 @@ async def process_input(event):
 
         await user_client.disconnect()
         await event.reply(f"✅ Account {phone_number} successfully hosted!")
+
+# Handle OTP during login
+@bot_client.on(events.NewMessage)
+async def handle_otp(event):
+    user_id = event.sender_id
+    text = event.text.strip()
+
+    if user_id != OWNER_ID:
+        return
+
+    if text.count('|') == 2:
+        api_id, api_hash, phone_number = text.split('|')
+        session_name = f"session_{phone_number}"
+        user_client = TelegramClient(session_name, api_id, api_hash)
+
+        try:
+            await user_client.start(phone=phone_number)
+            if not await user_client.is_user_authorized():
+                await user_client.send_code_request(phone_number)
+                await event.reply("📲 OTP sent to your phone. Please provide the OTP.")
+                return
+            else:
+                await event.reply(f"✅ Account {phone_number} is already authorized!")
+                save_account_to_db(api_id, api_hash, phone_number)
+
+        except PhoneCodeFloodError:
+            await event.reply("⚠️ You are sending requests too quickly. Please try again later.")
+        except Exception as e:
+            await event.reply(f"❌ Error: {e}")
+
+# Remove account from the database
+@bot_client.on(events.NewMessage)
+async def remove_account(event):
+    user_id = event.sender_id
+    text = event.text.strip()
+
+    if user_id != OWNER_ID:
+        return
+
+    if text.startswith("remove_"):
+        phone_number = text.split("_")[1]
+        accounts_collection.delete_one({"phone_number": phone_number})
+        await event.reply(f"✅ Account {phone_number} has been removed.")
 
 # Run the bot
 print("Bot is running...")
