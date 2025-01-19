@@ -2,7 +2,7 @@ import logging
 import requests
 from bs4 import BeautifulSoup
 from telegram import Update
-from telegram.ext import Updater, CommandHandler, CallbackContext
+from telegram.ext import Application, CommandHandler, ContextTypes
 
 # Setup logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -32,30 +32,28 @@ def get_lyrics(song_name: str) -> str:
         return "An error occurred while fetching the lyrics."
 
 # Command handler for '/lyric' command
-def lyric(update: Update, context: CallbackContext) -> None:
+async def lyric(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     song_name = ' '.join(context.args)
     if not song_name:
-        update.message.reply_text("Please provide a song name. Usage: /lyric <song name>")
+        await update.message.reply_text("Please provide a song name. Usage: /lyric <song name>")
         return
 
     lyrics = get_lyrics(song_name)
-    update.message.reply_text(lyrics)
+    await update.message.reply_text(lyrics)
 
 # Main function to set up the bot
 def main():
     # Replace with your bot's token
-    token = '7208430789:AAEhpDdFXugHH9-PTKrZzcQnwFkkuUlCfI4'
+    token = 'YOUR_TELEGRAM_BOT_API_TOKEN'
 
-    # Set up the Updater and Dispatcher
-    updater = Updater(token, use_context=True)
-    dp = updater.dispatcher
+    # Create the Application and Dispatcher
+    application = Application.builder().token(token).build()
 
     # Register the /lyric command handler
-    dp.add_handler(CommandHandler("lyric", lyric))
+    application.add_handler(CommandHandler("lyric", lyric))
 
     # Start the Bot
-    updater.start_polling()
-    updater.idle()
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
