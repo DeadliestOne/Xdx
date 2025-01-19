@@ -10,7 +10,7 @@ init(autoreset=True)
 # Replace with your API credentials
 USER_API_ID = "26416419"
 USER_API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"
-BOT_API_TOKEN = "8075027784:AAFJ80wXsED8_2oMlivB46RZZwI7sm7xcL4"
+BOT_API_TOKEN = "8015878481:AAGgbl0Ssx37pATFSISWqUu731qBpdBio68"
 
 # MongoDB Configuration
 MONGO_URI = "mongodb://localhost:27017/"  # Replace with your MongoDB connection string
