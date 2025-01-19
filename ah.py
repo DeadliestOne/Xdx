@@ -1,124 +1,61 @@
-import asyncio
 import os
 import json
-from telethon import TelegramClient, events, Button
-from telethon.errors import SessionPasswordNeededError, PhoneCodeFloodError
-from telethon.tl.functions.channels import LeaveChannelRequest
-from telethon.tl.functions.messages import GetHistoryRequest
-from telethon.tl.types import PeerUser
+from telethon import TelegramClient, events
+from telethon.errors import SessionPasswordNeededError, FloodWaitError
 from pymongo import MongoClient
+from colorama import init, Fore
+import pyfiglet
+import asyncio
+
+# Initialize colorama for colored output
+init(autoreset=True)
+
+# Replace with your API credentials
+USER_API_ID = "26416419"
+USER_API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"
+BOT_API_TOKEN = "8015878481:AAGgbl0Ssx37pATFSISWqUu731qBpdBio68"
 
 # MongoDB Configuration
 MONGO_URI = "mongodb+srv://uchitraprobot2:Orion@cluster0.3es1c.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 DB_NAME = "telegram_bot"
 COLLECTION_NAME = "hosted_accounts"
+
+# Connect to MongoDB
 client = MongoClient(MONGO_URI)
 db = client[DB_NAME]
 accounts_collection = db[COLLECTION_NAME]
 
-# Session folder
-CREDENTIALS_FOLDER = 'sessions'
-if not os.path.exists(CREDENTIALS_FOLDER):
-    os.mkdir(CREDENTIALS_FOLDER)
-
-# Save and load credentials
-def save_credentials(session_name, credentials):
-    path = os.path.join(CREDENTIALS_FOLDER, f"{session_name}.json")
-    with open(path, 'w') as f:
-        json.dump(credentials, f)
-
-def load_credentials(session_name):
-    path = os.path.join(CREDENTIALS_FOLDER, f"{session_name}.json")
-    if os.path.exists(path):
-        with open(path, 'r') as f:
-            return json.load(f)
-    return {}
-
-# Bot token and owner ID
+# Define the bot owner and allowed users
 OWNER_ID = 6748827895  # Replace with the owner user ID
-BOT_TOKEN = "8015878481:AAGgbl0Ssx37pATFSISWqUu731qBpdBio68"  # Replace with your bot token
+ALLOWED_USERS = set([OWNER_ID])  # Initially allow only the owner
 
-# MongoDB Bot-related functions
+# User states to track ongoing processes
+user_states = {}
+
+# Initialize Telegram bot
+bot_client = TelegramClient('bot_session', USER_API_ID, USER_API_HASH)
+
+# Helper functions for MongoDB
 def save_account_to_db(api_id, api_hash, phone_number):
+    """Save an account to the MongoDB database."""
     accounts_collection.update_one(
         {"phone_number": phone_number},
         {"$set": {"api_id": api_id, "api_hash": api_hash, "phone_number": phone_number}},
         upsert=True
     )
 
-# Initialize the bot client
-bot_client = TelegramClient('bot_session', api_id=26416419, api_hash='c109c77f5823c847b1aeb7fbd4990cc4')
+def get_all_accounts():
+    """Retrieve all hosted accounts from the database."""
+    return list(accounts_collection.find())
 
-# Initialize the Telegram client for user
-async def initialize_user_client(api_id, api_hash, phone_number, session_name):
-    user_client = TelegramClient(session_name, api_id, api_hash)
-    await user_client.start(phone=phone_number)
-    return user_client
+def remove_account_from_db(phone_number):
+    """Remove an account from the database."""
+    accounts_collection.delete_one({"phone_number": phone_number})
 
-# Bot command to start
-@bot_client.on(events.NewMessage(pattern='/start'))
-async def start_command(event):
-    user_id = event.sender_id
-    if user_id != OWNER_ID:
-        await event.reply("🚫 You are not authorized to use this bot.")
-        return
-
-    buttons = [
-        [Button.inline("📱 Host Account", b"host_account")],
-        [Button.inline("📋 List Accounts", b"list_accounts")],
-        [Button.inline("🔄 Start Ad Forwarding", b"start_forwarding")],
-        [Button.inline("📊 Stats", b"bot_stats")],
-        [Button.inline("❌ Remove Account", b"remove_account")]
-    ]
-
-    await event.reply(
-        "🤖 Welcome to the Hosting & Ad Forwarding Bot! Choose an option below:",
-        buttons=buttons
-    )
-
-# Handling callback queries
-@bot_client.on(events.CallbackQuery)
-async def handle_buttons(event):
-    user_id = event.sender_id
-    data = event.data.decode()
-
-    if data == "host_account":
-        await event.answer("📩 Send your API ID, API Hash, and phone number in the format:\n`API_ID|API_HASH|PHONE_NUMBER`")
-
-    elif data == "list_accounts":
-        accounts = accounts_collection.find()
-        account_list = '\n'.join([f"{i+1}. {account['phone_number']}" for i, account in enumerate(accounts)])
-        await event.answer(f"📋 **Hosted Accounts**:\n{account_list}")
-
-    elif data == "start_forwarding":
-        await event.answer("🔄 Starting Ad Forwarding...")
-
-    elif data == "bot_stats":
-        # Gather stats like RAM, CPU usage, etc.
-        pass
-
-    elif data == "remove_account":
-        await event.answer("🔢 Send the phone number of the account you want to remove.")
-
-# Handle incoming messages for account hosting
-@bot_client.on(events.NewMessage)
-async def process_input(event):
-    user_id = event.sender_id
-    text = event.text.strip()
-
-    if user_id != OWNER_ID:
-        return
-
-    # Step: Hosting account
-    if text.count('|') == 2:
-        api_id, api_hash, phone_number = text.split('|')
-        session_name = f"session_{phone_number}"
-
-        user_client = await initialize_user_client(api_id, api_hash, phone_number, session_name)
-        save_account_to_db(api_id, api_hash, phone_number)
-
-        await user_client.disconnect()
-        await event.reply(f"✅ Account {phone_number} successfully hosted!")
+# Function to display banner
+def display_banner():
+    print(Fore.RED + pyfiglet.figlet_format("LEGITDEALS9"))
+    print(Fore.GREEN + "Made by @Legitdeals9\n")
 
 # Handle OTP during login
 @bot_client.on(events.NewMessage)
@@ -144,26 +81,115 @@ async def handle_otp(event):
                 await event.reply(f"✅ Account {phone_number} is already authorized!")
                 save_account_to_db(api_id, api_hash, phone_number)
 
-        except PhoneCodeFloodError:
-            await event.reply("⚠️ You are sending requests too quickly. Please try again later.")
+        except FloodWaitError as e:
+            await event.reply(f"⚠️ You are sending requests too quickly. Please wait for {e.seconds} seconds.")
         except Exception as e:
             await event.reply(f"❌ Error: {e}")
 
-# Remove account from the database
-@bot_client.on(events.NewMessage)
-async def remove_account(event):
+# Handle /start command
+@bot_client.on(events.NewMessage(pattern='/start'))
+async def start_command(event):
+    """Welcome message for users."""
     user_id = event.sender_id
-    text = event.text.strip()
-
-    if user_id != OWNER_ID:
+    if user_id not in ALLOWED_USERS:
+        await event.reply("🚫 You are not authorized to use this bot.")
         return
 
-    if text.startswith("remove_"):
-        phone_number = text.split("_")[1]
-        accounts_collection.delete_one({"phone_number": phone_number})
-        await event.reply(f"✅ Account {phone_number} has been removed.")
+    await event.reply(
+        "🤖 Welcome to the Hosting Bot! Use the commands below:\n\n"
+        "📡 /host - Host a new Telegram account\n"
+        "🔄 /accounts - List hosted accounts\n"
+        "❌ /remove - Remove a hosted account\n"
+        "📊 /stats - View server stats\n"
+        "👤 /add {user_id} - Add a user to the allowed list (owner only)\n\n"
+        "Made by - [dev](t.me/Uncountableaura)"
+    )
+
+# Helper function for displaying stats
+@bot_client.on(events.NewMessage(pattern='/stats'))
+async def stats_command(event):
+    """Displays server stats and hosted accounts information."""
+    user_id = event.sender_id
+    if user_id not in ALLOWED_USERS:
+        await event.reply("🚫 You are not authorized to use this bot.")
+        return
+
+    # Fetch system stats
+    ram_usage = psutil.virtual_memory().percent
+    cpu_usage = psutil.cpu_percent(interval=1)
+    total_accounts = accounts_collection.count_documents({})
+    hosting_capacity = max(0, 50 - total_accounts)  # Assuming a limit of 50 accounts
+
+    message = (
+        f"📊 **Server Stats**:\n"
+        f"💾 RAM Usage: {ram_usage}%\n"
+        f"⚙️ CPU Usage: {cpu_usage}%\n"
+        f"📱 Hosted Accounts: {total_accounts}\n"
+        f"🔓 Remaining Capacity: {hosting_capacity} accounts\n\n"
+        "Made by - [dev](t.me/Uncountableaura)"
+    )
+    await event.reply(message)
+
+# Function for adding a user to allowed list (owner only)
+@bot_client.on(events.NewMessage(pattern='/add'))
+async def add_user(event):
+    """Adds a user to the allowed list."""
+    user_id = event.sender_id
+    if user_id != OWNER_ID:
+        await event.reply("🚫 You are not authorized to use this command.")
+        return
+
+    message_parts = event.text.split(' ')
+    if len(message_parts) != 2:
+        await event.reply("⚠️ Invalid format. Use: /add <user_id>")
+        return
+
+    new_user_id = int(message_parts[1])
+    ALLOWED_USERS.add(new_user_id)
+    await event.reply(f"✅ User {new_user_id} has been added to the allowed list.")
+
+# Function for listing all hosted accounts
+@bot_client.on(events.NewMessage(pattern='/accounts'))
+async def accounts_command(event):
+    """Lists all hosted accounts."""
+    user_id = event.sender_id
+    if user_id not in ALLOWED_USERS:
+        await event.reply("🚫 You are not authorized to use this bot.")
+        return
+
+    accounts = get_all_accounts()
+    if not accounts:
+        await event.reply("📭 No accounts are currently hosted.")
+        return
+
+    account_list = '\n'.join([f"{i+1}. {account['phone_number']}" for i, account in enumerate(accounts)])
+    await event.reply(f"📋 **Hosted Accounts**:\n{account_list}\n\nMade by - [dev](t.me/Uncountableaura)")
+
+# Handle /remove command to remove hosted accounts
+@bot_client.on(events.NewMessage(pattern='/remove'))
+async def remove_command(event):
+    """Removes a hosted account."""
+    user_id = event.sender_id
+    if user_id not in ALLOWED_USERS:
+        await event.reply("🚫 You are not authorized to use this command.")
+        return
+
+    await event.reply("🔢 Send the phone number of the account you want to remove.")
+    user_states[user_id] = {'step': 'awaiting_remove'}
+
+@bot_client.on(events.NewMessage)
+async def handle_remove(event):
+    """Handles account removal."""
+    user_id = event.sender_id
+    if user_id not in user_states or user_states[user_id].get('step') != 'awaiting_remove':
+        return
+
+    phone_number = event.text.strip()
+    remove_account_from_db(phone_number)
+    await event.reply(f"✅ Account {phone_number} has been removed.")
+    del user_states[user_id]
 
 # Run the bot
 print("Bot is running...")
-bot_client.start(bot_token=BOT_TOKEN)
+bot_client.start(bot_token=BOT_API_TOKEN)
 bot_client.run_until_disconnected()
