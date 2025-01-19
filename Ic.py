@@ -1,9 +1,9 @@
 import logging
 import asyncio
 from pyrogram import Client, filters
-from pytgcalls import PyTgCalls, GroupCallFactory
-import yt_dlp as youtube_dl
+from pytgcalls import PyTgCalls
 from pytgcalls.types import AudioPiped
+import yt_dlp as youtube_dl
 
 # Set up logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 # Initialize the Pyrogram Client
 app = Client("music_bot", api_id="26416419", api_hash="c109c77f5823c847b1aeb7fbd4990cc4", bot_token="7869333256:AAEAB080RyfVdjcG1lz9_7iUb7qjixV28Rs")
 
-# Initialize PyTgCalls (GroupCallFactory handles call creation)
-pytgcalls = GroupCallFactory(app).get_group_call()
+# Initialize PyTgCalls
+pytgcalls = PyTgCalls(app)
 
 # The voice chat's group ID (you'll need to have a group to call in)
 GROUP_ID = -1002342618765  # Replace with your group's chat ID
@@ -52,12 +52,15 @@ async def play_song(client, message):
     await message.reply(f"Found the song! Now playing {song_name} in the voice chat.")
 
     # Join the voice chat and stream the audio
-    await pytgcalls.join(GROUP_ID, AudioPiped(audio_path))
+    await pytgcalls.join_group_call(
+        GROUP_ID,
+        AudioPiped(audio_path)
+    )
 
 # Command to stop the music
 @app.on_message(filters.command("stop"))
 async def stop_music(client, message):
-    await pytgcalls.leave(GROUP_ID)
+    await pytgcalls.leave_group_call(GROUP_ID)
     await message.reply("Music stopped and left the voice chat!")
 
 # Command to start the bot
