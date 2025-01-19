@@ -11,7 +11,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # Initialize the Pyrogram Client
-app = Client("music_bot", api_id="26416419", api_hash="c109c77f5823c847b1aeb7fbd4990cc4", bot_token="7869333256:AAEAB080RyfVdjcG1lz9_7iUb7qjixV28Rs)
+app = Client("music_bot", api_id="26416419", api_hash="c109c77f5823c847b1aeb7fbd4990cc4", bot_token="7869333256:AAEAB080RyfVdjcG1lz9_7iUb7qjixV28Rs")
 
 # Initialize PyTgCalls
 pytgcalls = PyTgCalls(app)
