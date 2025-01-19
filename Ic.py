@@ -1,6 +1,5 @@
 import logging
 import requests
-from bs4 import BeautifulSoup
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
@@ -9,53 +8,34 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
                     level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Function to scrape lyrics from Genius
-def get_lyrics(song_name: str) -> str:
+# Function to fetch lyrics from Lyrics.ovh API
+def get_lyrics(song_name: str, artist_name: str) -> str:
     try:
-        search_url = f"https://genius.com/search?q={song_name.replace(' ', '%20')}"
-        search_page = requests.get(search_url)
-        
+        # Construct the API URL
+        api_url = f"https://api.lyrics.ovh/v1/{artist_name}/{song_name}"
+        response = requests.get(api_url)
+
         # Check if the request was successful
-        if search_page.status_code != 200:
-            return "Error: Unable to fetch search results. Please try again later."
-        
-        soup = BeautifulSoup(search_page.text, 'html.parser')
-
-        # Look for the first result link
-        song_link = soup.find('a', {'class': 'mini_card'})
-        
-        if not song_link:
-            return "Sorry, no results found for this song."
-
-        song_url = song_link['href']
-        song_page = requests.get(song_url)
-
-        # Check if the song page is available
-        if song_page.status_code != 200:
-            return "Error: Unable to fetch the song page. Please try again later."
-
-        song_soup = BeautifulSoup(song_page.text, 'html.parser')
-
-        # Find the lyrics section
-        lyrics = song_soup.find('div', {'class': 'lyrics'})
-        
-        if lyrics:
-            return lyrics.get_text().strip()
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("lyrics", "Sorry, no lyrics found for this song.")
         else:
-            return "Sorry, I couldn't find the lyrics for this song."
+            return "Sorry, I couldn't find the lyrics for this song. Please try again later."
 
     except Exception as e:
         logger.error(f"Error occurred: {e}")
-        return f"An error occurred while fetching the lyrics: {e}"
+        return "An error occurred while fetching the lyrics."
 
 # Command handler for '/lyric' command
 async def lyric(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    song_name = ' '.join(context.args)
-    if not song_name:
-        await update.message.reply_text("Please provide a song name. Usage: /lyric <song name>")
+    if len(context.args) < 2:
+        await update.message.reply_text("Please provide both the song name and the artist name. Usage: /lyric <song name> <artist name>")
         return
 
-    lyrics = get_lyrics(song_name)
+    song_name = context.args[0]
+    artist_name = context.args[1]
+
+    lyrics = get_lyrics(song_name, artist_name)
     await update.message.reply_text(lyrics)
 
 # Main function to set up the bot
