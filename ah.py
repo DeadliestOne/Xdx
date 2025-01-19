@@ -13,7 +13,7 @@ USER_API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"
 BOT_API_TOKEN = "8015878481:AAGgbl0Ssx37pATFSISWqUu731qBpdBio68"
 
 # MongoDB Configuration
-MONGO_URI = "mongodb://localhost:27017/"  # Replace with your MongoDB connection string
+MONGO_URI = "mongodb+srv://uchitraprobot2:Orion@cluster0.3es1c.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"  # Replace with your MongoDB connection string
 DB_NAME = "telegram_bot"
 COLLECTION_NAME = "hosted_accounts"
 
