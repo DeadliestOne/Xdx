@@ -48,7 +48,7 @@ def remove_account_from_db(phone_number):
 
 async def main_menu(event):
     """Displays the main menu."""
-    await event.edit(
+    await event.respond(
         "🤖 **Main Menu**\nChoose an option below:",
         buttons=[
             [Button.inline("📡 Host Account", b"host_account")],
