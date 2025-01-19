@@ -186,7 +186,23 @@ async def handle_user_input(event):
         await event.reply(f"✅ Account {phone_number} has been removed.")
         del user_states[user_id]
 
+# Bot startup message to owner
+async def send_startup_message():
+    ram_usage = psutil.virtual_memory().percent
+    cpu_usage = psutil.cpu_percent(interval=1)
+    total_accounts = accounts_collection.count_documents({})
+
+    message = (
+        f"🚀 **Bot Started**\n"
+        f"🤖 Users: {len(ALLOWED_USERS)}\n"
+        f"💾 RAM Usage: {ram_usage}%\n"
+        f"⚙️ CPU Usage: {cpu_usage}%\n"
+        f"📱 Hosted Accounts: {total_accounts}"
+    )
+    await bot.send_message(OWNER_ID, message)
+
 # Run the bot
-print("Bot is running...")
+print("Bot is starting...")
 bot.start(bot_token=BOT_API_TOKEN)
+bot.loop.run_until_complete(send_startup_message())
 bot.run_until_disconnected()
