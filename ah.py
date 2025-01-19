@@ -1,8 +1,15 @@
 import os
 import psutil
-from telethon import TelegramClient, events, Button
+from telethon import TelegramClient, events
 from pymongo import MongoClient
 from colorama import init
+from telethon.errors import (
+    PhoneCodeFloodError,
+    PhoneCodeInvalidError,
+    SessionPasswordNeededError,
+    RpcCallFailError,
+)
+from telethon.tl.custom import Button
 
 # Initialize colorama for colored output
 init(autoreset=True)
@@ -23,8 +30,8 @@ db = client[DB_NAME]
 accounts_collection = db[COLLECTION_NAME]
 
 # Define the bot owner and allowed users
-OWNER_ID = 6748827895  # Replace with the owner user ID
-ALLOWED_USERS = set([OWNER_ID])  # Initially allow only the owner
+OWNER_ID = 6748827895
+ALLOWED_USERS = set([OWNER_ID])
 
 # User states to track ongoing processes
 user_states = {}
@@ -46,73 +53,69 @@ def get_all_accounts():
 def remove_account_from_db(phone_number):
     accounts_collection.delete_one({"phone_number": phone_number})
 
-async def main_menu(event):
-    """Displays the main menu with inline buttons."""
-    await event.respond(
-        "🤖 **Main Menu**\nChoose an option below:",
-        buttons=[
-            [Button.inline("📡 Host Account", b"host_account")],
-            [Button.inline("🔄 List Accounts", b"list_accounts")],
-            [Button.inline("📊 Server Stats", b"server_stats")],
-            [Button.inline("👤 Add User", b"add_user")],
-            [Button.inline("❌ Remove Account", b"remove_account")],
-        ]
-    )
+def generate_markdown_footer():
+    return "\n\n— This bot made by [dev](t.me/Uncountableaura)"
 
 @bot.on(events.NewMessage(pattern='/start'))
 async def start_command(event):
-    """Welcome message with inline buttons."""
     user_id = event.sender_id
     if user_id not in ALLOWED_USERS:
         await event.reply("🚫 You are not authorized to use this bot.")
         return
-    await main_menu(event)
 
-@bot.on(events.CallbackQuery)
-async def callback_handler(event):
-    """Handles the callback from the inline buttons."""
-    action = event.data.decode()
+    await event.reply(
+        "🤖 Welcome to the Hosting Bot! Use the buttons below to interact with the bot:\n\n"
+        "📡 /host - Host a new Telegram account\n"
+        "🔄 /accounts - List hosted accounts\n"
+        "❌ /remove - Remove a hosted account\n"
+        "📊 /stats - View server stats\n"
+        "👤 /add {user_id} - Add a user to the allowed list (owner only)",
+        buttons=[
+            [Button.text("Host New Account", resize=True)],
+            [Button.text("List Hosted Accounts", resize=True)],
+            [Button.text("Remove Account", resize=True)],
+            [Button.text("View Stats", resize=True)],
+            [Button.text("Add User", resize=True)]
+        ]
+    )
 
-    if action == 'host_account':
-        await event.respond("📩 Send your API ID, API Hash, and phone number in the format:\n`API_ID|API_HASH|PHONE_NUMBER`")
-        user_states[event.sender_id] = {'step': 'awaiting_credentials'}
-    
-    elif action == 'list_accounts':
-        accounts = get_all_accounts()
-        if not accounts:
-            await event.respond("📭 No accounts are currently hosted.")
-            return
+@bot.on(events.NewMessage(pattern='/stats'))
+async def stats_command(event):
+    user_id = event.sender_id
+    if user_id not in ALLOWED_USERS:
+        await event.reply("🚫 You are not authorized to use this bot.")
+        return
 
-        account_list = '\n'.join([f"{i+1}. {account['phone_number']}" for i, account in enumerate(accounts)])
-        await event.respond(f"📋 **Hosted Accounts**:\n{account_list}")
+    ram_usage = psutil.virtual_memory().percent
+    cpu_usage = psutil.cpu_percent(interval=1)
+    total_accounts = accounts_collection.count_documents({})
+    hosting_capacity = max(0, 50 - total_accounts)
 
-    elif action == 'server_stats':
-        ram_usage = psutil.virtual_memory().percent
-        cpu_usage = psutil.cpu_percent(interval=1)
-        total_accounts = accounts_collection.count_documents({})
-        hosting_capacity = max(0, 50 - total_accounts)  # Assuming a limit of 50 accounts
+    message = (
+        f"📊 **Server Stats**:\n"
+        f"💾 RAM Usage: {ram_usage}%\n"
+        f"⚙️ CPU Usage: {cpu_usage}%\n"
+        f"📱 Hosted Accounts: {total_accounts}\n"
+        f"🔓 Remaining Capacity: {hosting_capacity} accounts"
+    )
+    await event.reply(message + generate_markdown_footer())
 
-        message = (
-            f"📊 **Server Stats**:\n"
-            f"💾 RAM Usage: {ram_usage}%\n"
-            f"⚙️ CPU Usage: {cpu_usage}%\n"
-            f"📱 Hosted Accounts: {total_accounts}\n"
-            f"🔓 Remaining Capacity: {hosting_capacity} accounts"
-        )
-        await event.respond(message)
+@bot.on(events.NewMessage(pattern='/host'))
+async def host_command(event):
+    user_id = event.sender_id
+    if user_id not in ALLOWED_USERS:
+        await event.reply("🚫 You are not authorized to use this command.")
+        return
 
-    elif action == 'add_user':
-        # Add user feature (for owner only)
-        await event.respond("🔑 Send the user ID you want to add.")
-        user_states[event.sender_id] = {'step': 'awaiting_add_user'}
-
-    elif action == 'remove_account':
-        await event.respond("🔢 Send the phone number of the account you want to remove.")
-        user_states[event.sender_id] = {'step': 'awaiting_remove'}
+    user_states[user_id] = {'step': 'awaiting_credentials'}
+    await event.reply(
+        "📩 Send your API ID, API Hash, and phone number in the format:\n`API_ID|API_HASH|PHONE_NUMBER`\n\n"
+        "— This bot made by [dev](t.me/Uncountableaura)",
+        buttons=[Button.text("Cancel", resize=True)]
+    )
 
 @bot.on(events.NewMessage)
 async def process_input(event):
-    """Processes user input for hosting accounts and other commands."""
     user_id = event.sender_id
     if user_id not in user_states:
         return
@@ -158,35 +161,62 @@ async def process_input(event):
             await event.reply(f"❌ Error: {e}")
             del user_states[user_id]
 
-    elif state['step'] == 'awaiting_add_user':
-        user_input = event.text.strip()
-        if user_input.isdigit():
-            new_user_id = int(user_input)
-            ALLOWED_USERS.add(new_user_id)
-            await event.reply(f"User {new_user_id} added to the allowed list.")
-            del user_states[user_id]
-        else:
-            await event.reply("❌ Invalid user ID format.")
+@bot.on(events.NewMessage(pattern='/accounts'))
+async def accounts_command(event):
+    user_id = event.sender_id
+    if user_id not in ALLOWED_USERS:
+        await event.reply("🚫 You are not authorized to use this command.")
+        return
 
-    elif state['step'] == 'awaiting_remove':
-        phone_number = event.text.strip()
-        remove_account_from_db(phone_number)
-        await event.reply(f"✅ Account {phone_number} has been removed.")
-        del user_states[user_id]
+    accounts = get_all_accounts()
+    if not accounts:
+        await event.reply("📭 No accounts are currently hosted.")
+        return
 
-# Send startup message to the owner
-async def send_startup_message():
-    """Sends a message when the bot starts up."""
-    owner = await bot.get_entity(OWNER_ID)
-    cpu_usage = psutil.cpu_percent(interval=1)
-    ram_usage = psutil.virtual_memory().percent
-    await bot.send_message(owner, f"✅ Bot Started!\n\n"
-                                  f"⚙️ CPU Usage: {cpu_usage}%\n"
-                                  f"💾 RAM Usage: {ram_usage}%\n"
-                                  f"👤 Bot is running successfully.")
+    account_list = '\n'.join([f"{i+1}. {account['phone_number']}" for i, account in enumerate(accounts)])
+    await event.reply(f"📋 **Hosted Accounts**:\n{account_list}" + generate_markdown_footer())
+
+@bot.on(events.NewMessage(pattern='/remove'))
+async def remove_command(event):
+    user_id = event.sender_id
+    if user_id not in ALLOWED_USERS:
+        await event.reply("🚫 You are not authorized to use this command.")
+        return
+
+    await event.reply("🔢 Send the phone number of the account you want to remove.")
+    user_states[user_id] = {'step': 'awaiting_remove'}
+
+@bot.on(events.NewMessage)
+async def handle_remove(event):
+    user_id = event.sender_id
+    if user_id not in user_states or user_states[user_id].get('step') != 'awaiting_remove':
+        return
+
+    phone_number = event.text.strip()
+    remove_account_from_db(phone_number)
+    await event.reply(f"✅ Account {phone_number} has been removed.")
+    del user_states[user_id]
+
+@bot.on(events.NewMessage(pattern='/add'))
+async def add_command(event):
+    user_id = event.sender_id
+    if user_id != OWNER_ID:
+        await event.reply("🚫 You are not authorized to use this command.")
+        return
+
+    user_input = event.text.split()
+    if len(user_input) != 2:
+        await event.reply("⚠️ Usage: /add {user_id}")
+        return
+
+    try:
+        new_user_id = int(user_input[1])
+        ALLOWED_USERS.add(new_user_id)
+        await event.reply(f"✅ User {new_user_id} added to the allowed list.")
+    except ValueError:
+        await event.reply("❌ Invalid user ID.")
 
 # Run the bot
-print("Bot is starting...")
+print("Bot is running...")
 bot.start(bot_token=BOT_API_TOKEN)
-bot.loop.run_until_complete(send_startup_message())
 bot.run_until_disconnected()
