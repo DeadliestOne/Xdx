@@ -17,7 +17,7 @@ app = Client("music_bot", api_id="26416419", api_hash="c109c77f5823c847b1aeb7fbd
 pytgcalls = PyTgCalls(app)
 
 # The voice chat's group ID (you'll need to have a group to call in)
-GROUP_ID = -1002342618765  # Replace with your group's chat ID
+GROUP_ID = -1002342618765 # Replace with your group's chat ID
 
 # Function to download audio from YouTube
 async def download_audio(url: str):
@@ -37,7 +37,7 @@ async def play_song(client, message):
     song_name = message.text.split(" ", 1)[1]  # Get the song name from the command
     await message.reply("Searching for the song...")
 
-    # Use youtube-dl to find the song's URL
+    # Use yt-dlp to find the song's URL
     ydl_opts = {
         'format': 'bestaudio/best',
         'noplaylist': True,
