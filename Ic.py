@@ -11,60 +11,60 @@ logger = logging.getLogger(__name__)
 bot_data = {}
 
 # Command for creating a new bot
-def start(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text("Hello! I'm a bot management bot. Type /createbot to create a new bot.")
+async def start(update: Update, context: CallbackContext) -> None:
+    await update.message.reply_text("Hello! I'm a bot management bot. Type /createbot to create a new bot.")
 
-def create_bot(update: Update, context: CallbackContext) -> None:
+async def create_bot(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
 
     if user_id in bot_data:
-        update.message.reply_text("You already have a bot created! Type /viewbot to see its details.")
+        await update.message.reply_text("You already have a bot created! Type /viewbot to see its details.")
         return
     
     # Ask user for the bot name and username
-    update.message.reply_text("Please provide a bot name (e.g., MyBot).")
+    await update.message.reply_text("Please provide a bot name (e.g., MyBot).")
     return
 
-def process_bot_name(update: Update, context: CallbackContext) -> None:
+async def process_bot_name(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
     bot_name = update.message.text
 
     bot_data[user_id] = {"bot_name": bot_name}
 
-    update.message.reply_text(f"Got it! Now, please provide the bot username (e.g., my_bot).")
+    await update.message.reply_text(f"Got it! Now, please provide the bot username (e.g., my_bot).")
     return
 
-def process_bot_username(update: Update, context: CallbackContext) -> None:
+async def process_bot_username(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
     bot_username = update.message.text
 
     if user_id in bot_data:
         bot_data[user_id]["bot_username"] = bot_username
-        update.message.reply_text(f"Great! Your bot '{bot_data[user_id]['bot_name']}' with username @{bot_username} is created.")
+        await update.message.reply_text(f"Great! Your bot '{bot_data[user_id]['bot_name']}' with username @{bot_username} is created.")
 
         # Allow users to manage commands after bot creation
-        update.message.reply_text("Now you can manage bot commands. Type /addcommand to add a command.")
+        await update.message.reply_text("Now you can manage bot commands. Type /addcommand to add a command.")
     else:
-        update.message.reply_text("You haven't created a bot yet. Type /createbot to create one.")
+        await update.message.reply_text("You haven't created a bot yet. Type /createbot to create one.")
 
-def add_command(update: Update, context: CallbackContext) -> None:
+async def add_command(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
     if user_id in bot_data:
-        update.message.reply_text("Please provide the command you'd like to add (e.g., /start).")
+        await update.message.reply_text("Please provide the command you'd like to add (e.g., /start).")
     else:
-        update.message.reply_text("You need to create a bot first. Type /createbot.")
+        await update.message.reply_text("You need to create a bot first. Type /createbot.")
 
-def process_command(update: Update, context: CallbackContext) -> None:
+async def process_command(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
     command = update.message.text.strip()
 
     if user_id in bot_data:
         bot_data[user_id]["command"] = command
-        update.message.reply_text(f"Command '{command}' has been added to your bot!")
+        await update.message.reply_text(f"Command '{command}' has been added to your bot!")
     else:
-        update.message.reply_text("You need to create a bot first. Type /createbot.")
+        await update.message.reply_text("You need to create a bot first. Type /createbot.")
 
-def view_bot(update: Update, context: CallbackContext) -> None:
+async def view_bot(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id
     if user_id in bot_data:
         bot_info = bot_data[user_id]
@@ -72,9 +72,9 @@ def view_bot(update: Update, context: CallbackContext) -> None:
         bot_username = bot_info.get("bot_username", "Not set")
         bot_command = bot_info.get("command", "No commands added")
 
-        update.message.reply_text(f"Your Bot Info:\nName: {bot_name}\nUsername: @{bot_username}\nCommands: {bot_command}")
+        await update.message.reply_text(f"Your Bot Info:\nName: {bot_name}\nUsername: @{bot_username}\nCommands: {bot_command}")
     else:
-        update.message.reply_text("You haven't created a bot yet. Type /createbot.")
+        await update.message.reply_text("You haven't created a bot yet. Type /createbot.")
 
 # Error handler
 def error(update: Update, context: CallbackContext) -> None:
@@ -84,29 +84,25 @@ def main():
     # Replace with your bot's token
     token = '7208430789:AAEhpDdFXugHH9-PTKrZzcQnwFkkuUlCfI4'
 
-    # Updater and Dispatcher
-    updater = Updater(token)
-    dp = updater.dispatcher
+    # Create Application instance
+    application = Application.builder().token(token).build()
 
-    # Define command handlers
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("createbot", create_bot))
-    dp.add_handler(CommandHandler("addcommand", add_command))
-    dp.add_handler(CommandHandler("viewbot", view_bot))
+    # Register command handlers
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("createbot", create_bot))
+    application.add_handler(CommandHandler("addcommand", add_command))
+    application.add_handler(CommandHandler("viewbot", view_bot))
 
-    # Add message handlers
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, process_bot_name))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, process_bot_username))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, process_command))
+    # Register message handlers
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_bot_name))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_bot_username))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_command))
 
     # Log all errors
-    dp.add_error_handler(error)
+    application.add_error_handler(error)
 
-    # Start the Bot
-    updater.start_polling()
-
-    # Run the bot until you send a stop signal (Ctrl+C)
-    updater.idle()
+    # Start the bot
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
