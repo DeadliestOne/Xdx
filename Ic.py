@@ -61,7 +61,7 @@ async def lyric(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 # Main function to set up the bot
 def main():
     # Replace with your bot's token
-    token = 'YOUR_TELEGRAM_BOT_API_TOKEN'
+    token = '7208430789:AAEhpDdFXugHH9-PTKrZzcQnwFkkuUlCfI4'
 
     # Create the Application and Dispatcher
     application = Application.builder().token(token).build()
