@@ -77,7 +77,7 @@ async def download_instagram_video(update: Update, context: CallbackContext) -> 
 # Main function to start the bot
 def main():
     # Replace 'YOUR_BOT_TOKEN' with your actual bot token
-    application = Application.builder().token("YOUR_Application.builder().token("7208430789:AAEhpDdFXugHH9-PTKrZzcQnwFkkuUlCfI4").build()BOT_TOKEN").build()
+    application = Application.builder().token("7208430789:AAEhpDdFXugHH9-PTKrZzcQnwFkkuUlCfI4").build()
 
     # Command handlers
     application.add_handler(CommandHandler("start", start))
