@@ -1,14 +1,14 @@
 from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackContext, filters
 from pytube import YouTube
 import os
 
 # Start command
-def start(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text("Hello! Send me a YouTube link, and I'll download the video for you.")
+async def start(update: Update, context: CallbackContext) -> None:
+    await update.message.reply_text("Hello! Send me a YouTube link, and I'll download the video for you.")
 
 # Handle YouTube links
-def download_video(update: Update, context: CallbackContext) -> None:
+async def download_video(update: Update, context: CallbackContext) -> None:
     url = update.message.text
     try:
         # Ensure it's a valid YouTube URL
@@ -19,29 +19,26 @@ def download_video(update: Update, context: CallbackContext) -> None:
         
         # Send the video file
         with open(file_path, 'rb') as video_file:
-            update.message.reply_video(video=video_file, caption=f"Here is your video: {title}")
+            await update.message.reply_video(video=video_file, caption=f"Here is your video: {title}")
         
         # Clean up
         os.remove(file_path)
     except Exception as e:
-        update.message.reply_text(f"Error: {e}")
+        await update.message.reply_text(f"Error: {e}")
 
 # Main function
 def main():
-    # Replace 'YOUR_BOT_TOKEN' with your actual bot token
-    updater = Updater("7208430789:AAEhpDdFXugHH9-PTKrZzcQnwFkkuUlCfI4")
-
-    dispatcher = updater.dispatcher
+    # Replace '7208430789:AAEhpDdFXugHH9-PTKrZzcQnwFkkuUlCfI4' with your actual bot token
+    application = Application.builder().token("7208430789:AAEhpDdFXugHH9-PTKrZzcQnwFkkuUlCfI4").build()
 
     # Command handlers
-    dispatcher.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("start", start))
     
     # Message handler for YouTube links
-    dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, download_video))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_video))
 
     # Start the bot
-    updater.start_polling()
-    updater.idle()
+    application.run_polling()
 
 if __name__ == "__main__":
     main()
