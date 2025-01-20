@@ -1,39 +1,46 @@
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackContext, filters
-from pytube import YouTube
+import yt_dlp
 import os
 
-# Start command
+# Start command handler
 async def start(update: Update, context: CallbackContext) -> None:
     await update.message.reply_text("Hello! Send me a YouTube link, and I'll download the video for you.")
 
-# Handle YouTube links
+# Download video handler
 async def download_video(update: Update, context: CallbackContext) -> None:
     url = update.message.text
     try:
-        # Ensure it's a valid YouTube URL
-        yt = YouTube(url)
-        video = yt.streams.filter(progressive=True, file_extension='mp4').get_highest_resolution()
-        title = yt.title
-        file_path = video.download(output_path="downloads")
-        
-        # Send the video file
+        # Define download options
+        options = {
+            'outtmpl': 'downloads/%(title)s.%(ext)s',  # Save path
+            'format': 'bestvideo+bestaudio/best',      # Download best quality
+            'noplaylist': True,                        # Disable playlist downloads
+        }
+
+        # Download video using yt-dlp
+        with yt_dlp.YoutubeDL(options) as ydl:
+            info = ydl.extract_info(url, download=True)  # Extract and download
+            file_path = ydl.prepare_filename(info)       # Get downloaded file path
+
+        # Send video file to user
         with open(file_path, 'rb') as video_file:
-            await update.message.reply_video(video=video_file, caption=f"Here is your video: {title}")
-        
-        # Clean up
+            await update.message.reply_video(video=video_file, caption=f"Here is your video: {info['title']}")
+
+        # Clean up downloaded file
         os.remove(file_path)
+
     except Exception as e:
         await update.message.reply_text(f"Error: {e}")
 
-# Main function
+# Main function to start the bot
 def main():
-    # Replace '7208430789:AAEhpDdFXugHH9-PTKrZzcQnwFkkuUlCfI4' with your actual bot token
+    # Replace 'YOUR_BOT_TOKEN' with your actual bot token
     application = Application.builder().token("7208430789:AAEhpDdFXugHH9-PTKrZzcQnwFkkuUlCfI4").build()
 
     # Command handlers
     application.add_handler(CommandHandler("start", start))
-    
+
     # Message handler for YouTube links
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_video))
 
