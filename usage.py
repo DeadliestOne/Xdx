@@ -7,11 +7,11 @@ import requests
 # Replace with your API credentials from my.telegram.org
 API_ID = '26416419'
 API_HASH = 'c109c77f5823c847b1aeb7fbd4990cc4'
-PHONE_NUMBER = '+8801634532670'  # Your Telegram account phone number
+PHONE_NUMBER = '+8801634532670'# Your Telegram account phone number
 
 # Replace with your Telegram Bot Token and Chat ID
 BOT_TOKEN = "7941421820:AAHF7nB24H9ucSi-cwUfCqCS1DSH0LorDfs"
-CHAT_ID = "6748827895"  # Your Telegram user ID to receive notifications
+CHAT_ID = "-1002405049591"  # Your Telegram user ID to receive notifications
 
 # MongoDB configuration
 MONGO_URI = "mongodb+srv://jc07cv9k3k:bEWsTrbPgMpSQe2z@cluster0.nfbxb.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0/"
@@ -34,16 +34,20 @@ async def send_bot_message(message):
 
 async def add_user_to_track(username):
     """Add a user to track."""
-    user = await telegram_client.get_entity(username)
-    if not tracked_users.find_one({"id": user.id}):
-        tracked_users.insert_one({
-            "id": user.id,
-            "username": username,
-            "online_logs": [],
-        })
-        return f"Started tracking @{username}."
-    else:
-        return f"User @{username} is already being tracked."
+    try:
+        user = await telegram_client.get_entity(username)
+        # Check if the user is already in the tracking list
+        if not tracked_users.find_one({"id": user.id}):
+            tracked_users.insert_one({
+                "id": user.id,
+                "username": username,
+                "online_logs": [],
+            })
+            return f"Started tracking @{username}."
+        else:
+            return f"User @{username} is already being tracked."
+    except Exception as e:
+        return f"Error adding user: {e}"
 
 @telegram_client.on(events.UserUpdate)
 async def handle_user_update(event):
@@ -51,6 +55,7 @@ async def handle_user_update(event):
     if event.user_id:
         user = await telegram_client.get_entity(event.user_id)
         tracked_user = tracked_users.find_one({"id": user.id})
+        
         if tracked_user:
             now = datetime.utcnow()
             if isinstance(user.status, UserStatusOnline):
