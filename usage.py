@@ -1,100 +1,109 @@
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telethon import TelegramClient, events
+from telethon.tl.types import UserStatusOnline, UserStatusOffline
 from pymongo import MongoClient
-from datetime import datetime, timedelta
+from datetime import datetime
+import requests
 
-# MongoDB Configuration
-MONGO_URI = "mongodb+srv://jc07cv9k3k:bEWsTrbPgMpSQe2z@cluster0.nfbxb.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0/"  # Replace with your MongoDB URI
+# Replace with your API credentials from my.telegram.org
+API_ID = '26416419'
+API_HASH = 'c109c77f5823c847b1aeb7fbd4990cc4'
+PHONE_NUMBER = '+8801634532670'  # Your Telegram account phone number
+
+# Replace with your Telegram Bot Token and Chat ID
+BOT_TOKEN = "7941421820:AAHF7nB24H9ucSi-cwUfCqCS1DSH0LorDfs"
+CHAT_ID = "6748827895"  # Your Telegram user ID to receive notifications
+
+# MongoDB configuration
+MONGO_URI = "mongodb+srv://jc07cv9k3k:bEWsTrbPgMpSQe2z@cluster0.nfbxb.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0/"
 client = MongoClient(MONGO_URI)
 db = client['online_status_bot']
-user_collection = db['user_status']
+tracked_users = db['tracked_users']  # Collection to store tracking information
 
-# Log when a user sends a message (simulating online activity)
-async def log_activity(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    username = update.effective_user.username or "Unknown User"
-    user = user_collection.find_one({"username": username})
+# Initialize Telethon client
+telegram_client = TelegramClient('user_session', API_ID, API_HASH)
 
-    if user:
-        # If user is currently offline, mark them online
-        if user["status"] == "offline":
-            user_collection.update_one(
-                {"username": username},
-                {"$set": {"status": "online", "last_online": datetime.utcnow()}}
-            )
+async def send_bot_message(message):
+    """Send a message via Telegram Bot."""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": CHAT_ID, "text": message}
+    response = requests.post(url, data=payload)
+    if response.status_code == 200:
+        print(f"Message sent: {message}")
     else:
-        # Add user to the database
-        user_collection.insert_one({
+        print(f"Failed to send message. Response: {response.text}")
+
+async def add_user_to_track(username):
+    """Add a user to track."""
+    user = await telegram_client.get_entity(username)
+    if not tracked_users.find_one({"id": user.id}):
+        tracked_users.insert_one({
+            "id": user.id,
             "username": username,
-            "status": "online",
-            "last_online": datetime.utcnow(),
-            "online_duration": 0
+            "online_logs": [],
         })
+        return f"Started tracking @{username}."
+    else:
+        return f"User @{username} is already being tracked."
 
-# Command to start the bot
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text("Welcome! The bot is tracking your activity. Use /fetch to see your online duration.")
+@telegram_client.on(events.UserUpdate)
+async def handle_user_update(event):
+    """Handle online/offline updates for tracked users."""
+    if event.user_id:
+        user = await telegram_client.get_entity(event.user_id)
+        tracked_user = tracked_users.find_one({"id": user.id})
+        if tracked_user:
+            now = datetime.utcnow()
+            if isinstance(user.status, UserStatusOnline):
+                log = f"{user.username} is online at {now.strftime('%Y-%m-%d %H:%M:%S')}."
+                print(log)
+                tracked_users.update_one(
+                    {"id": user.id},
+                    {"$push": {"online_logs": {"status": "online", "time": now}}}
+                )
+                await send_bot_message(log)
+            elif isinstance(user.status, UserStatusOffline):
+                log = f"{user.username} is offline at {now.strftime('%Y-%m-%d %H:%M:%S')}."
+                print(log)
+                tracked_users.update_one(
+                    {"id": user.id},
+                    {"$push": {"online_logs": {"status": "offline", "time": now}}}
+                )
+                await send_bot_message(log)
 
-# Command to fetch user's total online time
-async def fetch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    username = update.effective_user.username or "Unknown User"
-    user = user_collection.find_one({"username": username})
-
+async def fetch_user_status(username):
+    """Fetch the online status logs of a user."""
+    user = tracked_users.find_one({"username": username})
     if not user:
-        await update.message.reply_text("You are not being tracked yet.")
-        return
+        return f"No tracking data found for @{username}."
+    
+    logs = user.get("online_logs", [])
+    if not logs:
+        return f"No activity logs found for @{username}."
+    
+    report = [f"Activity logs for @{username}:"]
+    for log in logs:
+        status = log["status"]
+        time = log["time"].strftime("%Y-%m-%d %H:%M:%S")
+        report.append(f"{status.title()} at {time}")
+    return "\n".join(report)
 
-    # Calculate total duration
-    total_duration = user["online_duration"]
-    if user["status"] == "online":
-        # Add current online session if still online
-        last_online = user["last_online"]
-        total_duration += (datetime.utcnow() - last_online).total_seconds()
-
-    total_time = str(timedelta(seconds=int(total_duration)))
-    await update.message.reply_text(f"@{username}, you've been online for a total of {total_time}.")
-
-# Command to stop tracking
-async def stop_tracking(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    username = update.effective_user.username or "Unknown User"
-    user_collection.delete_one({"username": username})
-    await update.message.reply_text(f"Stopped tracking @{username}.")
-
-# Simulate offline status for users who are inactive for a threshold
-async def check_inactive_users(context: ContextTypes.DEFAULT_TYPE) -> None:
-    threshold = timedelta(minutes=5)  # Inactivity threshold
-    now = datetime.utcnow()
-    users = user_collection.find({"status": "online"})
-
-    for user in users:
-        last_online = user["last_online"]
-        if (now - last_online) > threshold:
-            # Mark user as offline and calculate session duration
-            session_duration = (now - last_online).total_seconds()
-            user_collection.update_one(
-                {"username": user["username"]},
-                {
-                    "$set": {"status": "offline"},
-                    "$inc": {"online_duration": session_duration}
-                }
-            )
-
-# Main function to set up the bot
-def main() -> None:
-    TOKEN = "7941421820:AAHF7nB24H9ucSi-cwUfCqCS1DSH0LorDfs"  # Replace with your bot's token
-    application = Application.builder().token(TOKEN).build()
-
-    # Commands
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("fetch", fetch))
-    application.add_handler(CommandHandler("stop", stop_tracking))
-
-    # Message handler to log activity
-    application.add_handler(MessageHandler(filters.ALL, log_activity))
-
-    # Job to check inactive users
-    application.job_queue.run_repeating(check_inactive_users, interval=60)
-
-    application.run_polling()
+async def main():
+    """Main logic."""
+    await telegram_client.start(PHONE_NUMBER)
+    print("Telegram Client has started.")
+    
+    # Example: Add a user to track
+    username_to_track = input("Enter the username to track (e.g., @example_user): ")
+    print(await add_user_to_track(username_to_track))
+    
+    # Example: Fetch user status
+    username_to_fetch = input("Enter the username to fetch status for (e.g., @example_user): ")
+    status_report = await fetch_user_status(username_to_fetch)
+    print(status_report)
+    await send_bot_message(status_report)
+    
+    # Keep the client running to monitor status
+    await telegram_client.run_until_disconnected()
 
 if __name__ == "__main__":
-    main()
+    telegram_client.loop.run_until_complete(main())
