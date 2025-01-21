@@ -57,7 +57,7 @@ def update_online_status(username: str, status: str) -> None:
                 })
 
 # Main function to set up the bot
-async def main() -> None:
+def main() -> None:
     TOKEN = "7941421820:AAHF7nB24H9ucSi-cwUfCqCS1DSH0LorDfs"  # Replace with your bot's token
     application = Application.builder().token(TOKEN).build()
 
@@ -65,8 +65,7 @@ async def main() -> None:
     application.add_handler(CommandHandler("notice", notice))
     application.add_handler(CommandHandler("fetch", fetch))
 
-    await application.run_polling()
+    application.run_polling()
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    main()
