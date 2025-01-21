@@ -1,10 +1,11 @@
 from telethon import TelegramClient, events
-from telethon.tl.types import UserStatusOnline, UserStatusOffline
+from telethon.tl.types import UserStatusOnline, UserStatusOffline, User
 from pymongo import MongoClient
 from datetime import datetime
 import requests
+from telegram import Update
+from telegram.ext import Updater, CommandHandler, CallbackContext
 
-# Replace with your API credentials from my.telegram.org
 # Replace with your API credentials from my.telegram.org
 API_ID = '26416419'
 API_HASH = 'c109c77f5823c847b1aeb7fbd4990cc4'
@@ -18,10 +19,14 @@ CHAT_ID = "-1002405049591"  # Your Telegram user ID to receive notifications
 MONGO_URI = "mongodb+srv://jc07cv9k3k:bEWsTrbPgMpSQe2z@cluster0.nfbxb.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0/"
 client = MongoClient(MONGO_URI)
 db = client['online_status_bot']
-tracked_users = db['tracked_users']  #  to store tracking information
+tracked_users = db['tracked_users']  #  toCollection to store tracking information
 
 # Initialize Telethon client
 telegram_client = TelegramClient('user_session', API_ID, API_HASH)
+
+# Initialize Telegram bot using python-telegram-bot
+updater = Updater(token=BOT_TOKEN, use_context=True)
+dispatcher = updater.dispatcher
 
 async def send_bot_message(message):
     """Send a message via Telegram Bot."""
@@ -37,16 +42,22 @@ async def add_user_to_track(username):
     """Add a user to track."""
     try:
         user = await telegram_client.get_entity(username)
-        # Check if the user is already in the tracking list
-        if not tracked_users.find_one({"id": user.id}):
-            tracked_users.insert_one({
-                "id": user.id,
-                "username": username,
-                "online_logs": [],
-            })
-            return f"Started tracking @{username}."
+        
+        # Ensure it's a user, not a channel or group
+        if isinstance(user, User):  # Check if the entity is a user
+            # Check if the user is already in the tracking list
+            if not tracked_users.find_one({"id": user.id}):
+                tracked_users.insert_one({
+                    "id": user.id,
+                    "username": username,
+                    "online_logs": [],
+                })
+                return f"Started tracking @{username}."
+            else:
+                return f"User @{username} is already being tracked."
         else:
-            return f"User @{username} is already being tracked."
+            return f"@{username} is not a valid user. Please provide a valid username."
+    
     except Exception as e:
         return f"Error adding user: {e}"
 
@@ -55,26 +66,29 @@ async def handle_user_update(event):
     """Handle online/offline updates for tracked users."""
     if event.user_id:
         user = await telegram_client.get_entity(event.user_id)
-        tracked_user = tracked_users.find_one({"id": user.id})
-        
-        if tracked_user:
-            now = datetime.utcnow()
-            if isinstance(user.status, UserStatusOnline):
-                log = f"{user.username} is online at {now.strftime('%Y-%m-%d %H:%M:%S')}."
-                print(log)
-                tracked_users.update_one(
-                    {"id": user.id},
-                    {"$push": {"online_logs": {"status": "online", "time": now}}}
-                )
-                await send_bot_message(log)
-            elif isinstance(user.status, UserStatusOffline):
-                log = f"{user.username} is offline at {now.strftime('%Y-%m-%d %H:%M:%S')}."
-                print(log)
-                tracked_users.update_one(
-                    {"id": user.id},
-                    {"$push": {"online_logs": {"status": "offline", "time": now}}}
-                )
-                await send_bot_message(log)
+
+        # Only proceed if the entity is a user
+        if isinstance(user, User):
+            tracked_user = tracked_users.find_one({"id": user.id})
+            
+            if tracked_user:
+                now = datetime.utcnow()
+                if isinstance(user.status, UserStatusOnline):
+                    log = f"{user.username} is online at {now.strftime('%Y-%m-%d %H:%M:%S')}."
+                    print(log)
+                    tracked_users.update_one(
+                        {"id": user.id},
+                        {"$push": {"online_logs": {"status": "online", "time": now}}}
+                    )
+                    await send_bot_message(log)
+                elif isinstance(user.status, UserStatusOffline):
+                    log = f"{user.username} is offline at {now.strftime('%Y-%m-%d %H:%M:%S')}."
+                    print(log)
+                    tracked_users.update_one(
+                        {"id": user.id},
+                        {"$push": {"online_logs": {"status": "offline", "time": now}}}
+                    )
+                    await send_bot_message(log)
 
 async def fetch_user_status(username):
     """Fetch the online status logs of a user."""
@@ -92,6 +106,30 @@ async def fetch_user_status(username):
         time = log["time"].strftime("%Y-%m-%d %H:%M:%S")
         report.append(f"{status.title()} at {time}")
     return "\n".join(report)
+
+# Command to notice a user and start tracking
+def notice(update: Update, context: CallbackContext):
+    """Add a user to track."""
+    if context.args:
+        username = context.args[0]
+        response = telegram_client.loop.run_until_complete(add_user_to_track(username))
+        update.message.reply_text(response)
+    else:
+        update.message.reply_text("Please provide a username to track.")
+
+# Command to fetch user logs
+def fetch(update: Update, context: CallbackContext):
+    """Fetch user activity logs."""
+    if context.args:
+        username = context.args[0]
+        response = telegram_client.loop.run_until_complete(fetch_user_status(username))
+        update.message.reply_text(response)
+    else:
+        update.message.reply_text("Please provide a username to fetch logs.")
+
+# Add command handlers to the bot
+dispatcher.add_handler(CommandHandler("notice", notice))
+dispatcher.add_handler(CommandHandler("fetch", fetch))
 
 async def monitor_and_start_tracking():
     """Start tracking users' current status when the bot starts."""
@@ -124,12 +162,16 @@ async def monitor_and_start_tracking():
 
 async def main():
     """Main logic."""
+    # Start the Telethon client
     await telegram_client.start(PHONE_NUMBER)
     print("Telegram Client has started.")
     
     # Start monitoring and tracking user statuses
     await monitor_and_start_tracking()
-    
+
+    # Start the bot to handle Telegram commands
+    updater.start_polling()
+
     # Keep the client running to monitor status
     await telegram_client.run_until_disconnected()
 
