@@ -147,7 +147,7 @@ application.add_handler(CommandHandler("fetch", fetch))
 
 async def monitor_and_start_tracking():
     """Start tracking users' current status when the bot starts."""
-    tracked_usernames = ["@example_user1", "@example_user2"]  # Add usernames to track
+    tracked_usernames = ["@your_ishani", "@evyto"]  # Add usernames to track
 
     for username in tracked_usernames:
         response = await add_user_to_track(username)
