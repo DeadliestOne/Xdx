@@ -1,5 +1,5 @@
 from telegram import Update
-from telegram.ext import Updater, CommandHandler, CallbackContext
+from telegram.ext import Application, CommandHandler, ContextTypes
 from pymongo import MongoClient
 from datetime import datetime
 
@@ -10,27 +10,27 @@ db = client['online_status_bot']
 user_collection = db['user_status']
 
 # Command to start the bot
-def start(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text("Welcome! Use /notice {username} to track a user and /fetch to get stats.")
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text("Welcome! Use /notice {username} to track a user and /fetch to get stats.")
 
 # Command to notice a user's activity
-def notice(update: Update, context: CallbackContext) -> None:
+async def notice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if len(context.args) != 1:
-        update.message.reply_text("Usage: /notice {username}")
+        await update.message.reply_text("Usage: /notice {username}")
         return
 
     username = context.args[0]
     if user_collection.find_one({"username": username}):
-        update.message.reply_text(f"Already tracking {username}.")
+        await update.message.reply_text(f"Already tracking {username}.")
     else:
         user_collection.insert_one({"username": username, "status": "offline", "last_online": None, "online_duration": 0})
-        update.message.reply_text(f"Started tracking {username}.")
+        await update.message.reply_text(f"Started tracking {username}.")
 
 # Command to fetch online duration
-def fetch(update: Update, context: CallbackContext) -> None:
+async def fetch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     tracked_users = list(user_collection.find())
     if not tracked_users:
-        update.message.reply_text("No users being tracked.")
+        await update.message.reply_text("No users being tracked.")
         return
 
     report = []
@@ -39,7 +39,7 @@ def fetch(update: Update, context: CallbackContext) -> None:
         duration = user['online_duration']
         report.append(f"{username}: {duration} seconds online")
 
-    update.message.reply_text("\n".join(report))
+    await update.message.reply_text("\n".join(report))
 
 # Simulated online status tracking (placeholder function)
 def update_online_status(username: str, status: str) -> None:
@@ -57,17 +57,16 @@ def update_online_status(username: str, status: str) -> None:
                 })
 
 # Main function to set up the bot
-def main() -> None:
+async def main() -> None:
     TOKEN = "7941421820:AAHF7nB24H9ucSi-cwUfCqCS1DSH0LorDfs"  # Replace with your bot's token
-    updater = Updater(TOKEN)
-    dispatcher = updater.dispatcher
+    application = Application.builder().token(TOKEN).build()
 
-    dispatcher.add_handler(CommandHandler("start", start))
-    dispatcher.add_handler(CommandHandler("notice", notice))
-    dispatcher.add_handler(CommandHandler("fetch", fetch))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("notice", notice))
+    application.add_handler(CommandHandler("fetch", fetch))
 
-    updater.start_polling()
-    updater.idle()
+    await application.run_polling()
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(main())
