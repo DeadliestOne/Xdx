@@ -13,7 +13,7 @@ PHONE_NUMBER = '+8801634532670'# Your Telegram account phone number
 
 # Replace with your Telegram Bot Token and Chat ID
 BOT_TOKEN = "7941421820:AAHF7nB24H9ucSi-cwUfCqCS1DSH0LorDfs"
-CHAT_ID = "-1002405049591"  # Your Telegram user ID to receive notifications
+CHAT_ID = "6748827895"  # Your Telegram user ID to receive notifications
 
 # MongoDB configuration
 MONGO_URI = "mongodb+srv://jc07cv9k3k:bEWsTrbPgMpSQe2z@cluster0.nfbxb.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0/"
@@ -147,7 +147,7 @@ application.add_handler(CommandHandler("fetch", fetch))
 
 async def monitor_and_start_tracking():
     """Start tracking users' current status when the bot starts."""
-    tracked_usernames = ["@your_ishani", "@evyto"]  # Add usernames to track
+    tracked_usernames = ["@your_ishani", "@your_ishani"]  # Add usernames to track
 
     for username in tracked_usernames:
         response = await add_user_to_track(username)
