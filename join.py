@@ -54,7 +54,7 @@ async def handle_user_input(event):
             # Simulate sending OTP
             await event.reply(
                 f"Phone number received: {phone_number}\n\n"
-                f"Your OTP is: `{otp}`\n\nPlease send the OTP to verify your number."
+                f"An OTP has been sent to your number. Please reply with the OTP to verify."
             )
         else:
             await event.reply("Invalid phone number format. Please try again in the format:\n\n`+1234567890`")
