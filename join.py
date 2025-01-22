@@ -4,19 +4,31 @@ import re
 import random
 
 # Replace with your credentials
-api_id = "YOUR_API_ID"
-api_hash = "YOUR_API_HASH"
-bot_token = "YOUR_BOT_TOKEN"  # Create a bot at @BotFather and get the token
+api_id = "26416419"
+api_hash = "c109c77f5823c847b1aeb7fbd4990cc4"
+bot_token = "7528897246:AAG6cSNdbi38HQA4QGAW5Ko5c3mng6WJdnc"  # Create a bot at @BotFather and get the token
 
 # Create the client (acting as a bot)
 client = TelegramClient('bot_session', api_id, api_hash).start(bot_token=bot_token)
+
+# Temporary storage for OTP-related data
+user_otps = {}
 
 # Command to trigger joining groups
 @client.on(events.NewMessage(pattern='/join_groups'))
 async def join_groups(event):
     sender = await event.get_sender()
-    if sender.is_self:
-        await event.reply("This command cannot be triggered by the bot itself.")
+    user_id = sender.id
+
+    # Check if user has already provided an OTP
+    if user_id not in user_otps:
+        await event.reply("Please provide your OTP to proceed. Send it as a reply to this message.")
+        return
+
+    otp = user_otps[user_id]
+    # Confirm OTP (this can be enhanced based on actual OTP validation logic)
+    if otp != "123456":  # Replace "123456" with your validation logic
+        await event.reply("Invalid OTP. Please try again.")
         return
 
     # Initial message
@@ -73,6 +85,20 @@ async def join_groups(event):
 
     except Exception as e:
         await status_message.edit(f"An error occurred: {str(e)}")
+
+
+# OTP handler
+@client.on(events.NewMessage)
+async def handle_otp(event):
+    sender = await event.get_sender()
+    user_id = sender.id
+
+    # Check if it's a reply for OTP
+    if "Please provide your OTP" in (await event.get_reply_message()).message:
+        otp = event.message.message.strip()
+        user_otps[user_id] = otp
+        await event.reply("OTP received! You can now send the /join_groups command to proceed.")
+
 
 # Notify the bot is running
 print("Bot is running. Send /join_groups to start.")
