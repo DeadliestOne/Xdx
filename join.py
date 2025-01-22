@@ -25,7 +25,7 @@ async def start(event):
         "Welcome! To proceed, please provide your phone number in the format:\n\n"
         "`+1234567890`"
     )
-    user_data[user_id] = {'status': 'awaiting_phone'}
+    user_data[user_id] = {'status': 'awaiting_phone', 'otp': None}
 
 
 @client.on(events.NewMessage)
@@ -46,20 +46,28 @@ async def handle_user_input(event):
         if re.match(r"^\+\d{10,15}$", phone_number):
             user_data[user_id]['phone'] = phone_number
             user_data[user_id]['status'] = 'awaiting_otp'
-            await event.reply(f"Phone number received: {phone_number}\n\nPlease send the OTP you received.")
+
+            # Generate a default OTP (e.g., a random 6-digit number)
+            otp = f"{random.randint(100000, 999999)}"
+            user_data[user_id]['otp'] = otp
+
+            # Simulate sending OTP
+            await event.reply(
+                f"Phone number received: {phone_number}\n\n"
+                f"Your OTP is: `{otp}`\n\nPlease send the OTP to verify your number."
+            )
         else:
             await event.reply("Invalid phone number format. Please try again in the format:\n\n`+1234567890`")
 
     elif user_status == 'awaiting_otp':
-        otp = event.message.message.strip()
+        otp_input = event.message.message.strip()
 
-        # Simulate OTP verification (replace this with actual logic if needed)
-        if otp == "123456":  # Replace with your OTP verification logic
-            user_data[user_id]['otp'] = otp
+        # Validate OTP
+        if otp_input == user_data[user_id]['otp']:
             user_data[user_id]['status'] = 'verified'
             await event.reply("✅ OTP verified! You can now send the `/join_groups` command to proceed.")
         else:
-            await event.reply("Invalid OTP. Please try again.")
+            await event.reply("❌ Invalid OTP. Please try again.")
 
     elif user_status == 'verified':
         # Handle additional commands or reset flow
