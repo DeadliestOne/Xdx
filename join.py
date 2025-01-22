@@ -11,27 +11,72 @@ bot_token = "7528897246:AAG6cSNdbi38HQA4QGAW5Ko5c3mng6WJdnc"  # Create a bot at 
 # Create the client (acting as a bot)
 client = TelegramClient('bot_session', api_id, api_hash).start(bot_token=bot_token)
 
-# Temporary storage for OTP-related data
-user_otps = {}
+# Temporary storage for user data
+user_data = {}
 
-# Command to trigger joining groups
+
+@client.on(events.NewMessage(pattern='/start'))
+async def start(event):
+    sender = await event.get_sender()
+    user_id = sender.id
+
+    # Welcome message and request phone number
+    await event.reply(
+        "Welcome! To proceed, please provide your phone number in the format:\n\n"
+        "`+1234567890`"
+    )
+    user_data[user_id] = {'status': 'awaiting_phone'}
+
+
+@client.on(events.NewMessage)
+async def handle_user_input(event):
+    sender = await event.get_sender()
+    user_id = sender.id
+
+    if user_id not in user_data:
+        return  # Ignore messages from users not in the flow
+
+    # Check the user's current status
+    user_status = user_data[user_id]['status']
+
+    if user_status == 'awaiting_phone':
+        phone_number = event.message.message.strip()
+
+        # Validate phone number format
+        if re.match(r"^\+\d{10,15}$", phone_number):
+            user_data[user_id]['phone'] = phone_number
+            user_data[user_id]['status'] = 'awaiting_otp'
+            await event.reply(f"Phone number received: {phone_number}\n\nPlease send the OTP you received.")
+        else:
+            await event.reply("Invalid phone number format. Please try again in the format:\n\n`+1234567890`")
+
+    elif user_status == 'awaiting_otp':
+        otp = event.message.message.strip()
+
+        # Simulate OTP verification (replace this with actual logic if needed)
+        if otp == "123456":  # Replace with your OTP verification logic
+            user_data[user_id]['otp'] = otp
+            user_data[user_id]['status'] = 'verified'
+            await event.reply("✅ OTP verified! You can now send the `/join_groups` command to proceed.")
+        else:
+            await event.reply("Invalid OTP. Please try again.")
+
+    elif user_status == 'verified':
+        # Handle additional commands or reset flow
+        await event.reply("You're already verified. Use `/join_groups` to start joining groups.")
+
+
 @client.on(events.NewMessage(pattern='/join_groups'))
 async def join_groups(event):
     sender = await event.get_sender()
     user_id = sender.id
 
-    # Check if user has already provided an OTP
-    if user_id not in user_otps:
-        await event.reply("Please provide your OTP to proceed. Send it as a reply to this message.")
+    # Check if the user is verified
+    if user_id not in user_data or user_data[user_id]['status'] != 'verified':
+        await event.reply("You must verify your phone number and OTP first. Use `/start` to begin.")
         return
 
-    otp = user_otps[user_id]
-    # Confirm OTP (this can be enhanced based on actual OTP validation logic)
-    if otp != "123456":  # Replace "123456" with your validation logic
-        await event.reply("Invalid OTP. Please try again.")
-        return
-
-    # Initial message
+    # Proceed with group joining logic (same as before)
     status_message = await event.reply("Fetching group links from Saved Messages...")
 
     try:
@@ -87,21 +132,8 @@ async def join_groups(event):
         await status_message.edit(f"An error occurred: {str(e)}")
 
 
-# OTP handler
-@client.on(events.NewMessage)
-async def handle_otp(event):
-    sender = await event.get_sender()
-    user_id = sender.id
-
-    # Check if it's a reply for OTP
-    if "Please provide your OTP" in (await event.get_reply_message()).message:
-        otp = event.message.message.strip()
-        user_otps[user_id] = otp
-        await event.reply("OTP received! You can now send the /join_groups command to proceed.")
-
-
 # Notify the bot is running
-print("Bot is running. Send /join_groups to start.")
+print("Bot is running. Send /start to begin.")
 
 # Start the bot
 client.run_until_disconnected()
