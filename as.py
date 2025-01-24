@@ -34,15 +34,11 @@ user_states = {}
 accounts = {}  # Hosted accounts
 
 # Get bot owner from the database or set it initially
-OWNER_ID = 6748827895
-owner_doc = users_collection.find_one({"role": "owner"})
-if owner_doc:
-    OWNER_ID = owner_doc["user_id"]
-else:
-    print("Owner not set. Set the OWNER_ID in the database.")
+OWNER_ID = 6748827895  # Replace with your Telegram user ID
 
-# Utility to check if a user is authorized
 def is_authorized(user_id):
+    if user_id == OWNER_ID:  # Allow owner by default
+        return True
     user = users_collection.find_one({"user_id": user_id})
     return user is not None
 
@@ -62,6 +58,7 @@ async def start(event):
                       "/remove - Remove a hosted account\n"
                       "/adduser - Add an authorized user (owner only)\n"
                       "/removeuser - Remove an authorized user (owner only)")
+
 
 @bot.on(events.NewMessage(pattern='/forward'))
 async def forward_command(event):
