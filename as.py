@@ -13,7 +13,7 @@ init(autoreset=True)
 USER_API_ID = "26416419"
 USER_API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"
 BOT_API_TOKEN = "7226701592:AAE7AGWAU0BXgw-PmLfhgarpCT4-2wrBdwE"
-MONGO_URI = "mongodb://localhost:27017/"  # Replace with your MongoDB URI
+MONGO_URI = "mongodb+srv://uchitraprobot2:Orion@cluster0.3es1c.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0/"  # Replace with your MongoDB URI
 
 CREDENTIALS_FOLDER = 'sessions'
 
