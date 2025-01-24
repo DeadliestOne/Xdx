@@ -34,7 +34,7 @@ user_states = {}
 accounts = {}  # Hosted accounts
 
 # Get bot owner from the database or set it initially
-OWNER_ID = None
+OWNER_ID = 6748827895
 owner_doc = users_collection.find_one({"role": "owner"})
 if owner_doc:
     OWNER_ID = owner_doc["user_id"]
