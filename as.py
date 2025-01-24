@@ -79,6 +79,68 @@ async def forward_command(event):
     user_states[user_id] = {'step': 'awaiting_message_count'}
     await event.reply("How many messages would you like to forward per group (1-5)?")
 
+@bot.on(events.NewMessage(pattern='/adduser'))
+async def add_user(event):
+    """Adds a user to the authorized list (owner only)."""
+    user_id = event.sender_id
+
+    if user_id != OWNER_ID:
+        await event.reply("You are not authorized to use this command.")
+        return
+
+    try:
+        # Extract the user ID from the message
+        command_parts = event.text.split()
+        if len(command_parts) != 2:
+            await event.reply("Usage: /adduser <USER_ID>")
+            return
+
+        new_user_id = int(command_parts[1])
+
+        # Check if the user is already authorized
+        if users_collection.find_one({"user_id": new_user_id}):
+            await event.reply("This user is already authorized.")
+            return
+
+        # Add the new user to the database
+        users_collection.insert_one({"user_id": new_user_id, "role": "user"})
+        await event.reply(f"User {new_user_id} has been added as an authorized user.")
+    except ValueError:
+        await event.reply("Invalid user ID format. Please use a numeric user ID.")
+    except Exception as e:
+        await event.reply(f"An error occurred: {e}")
+
+
+@bot.on(events.NewMessage(pattern='/removeuser'))
+async def remove_user(event):
+    """Removes a user from the authorized list (owner only)."""
+    user_id = event.sender_id
+
+    if user_id != OWNER_ID:
+        await event.reply("You are not authorized to use this command.")
+        return
+
+    try:
+        # Extract the user ID from the message
+        command_parts = event.text.split()
+        if len(command_parts) != 2:
+            await event.reply("Usage: /removeuser <USER_ID>")
+            return
+
+        target_user_id = int(command_parts[1])
+
+        # Remove the user from the database
+        result = users_collection.delete_one({"user_id": target_user_id})
+        if result.deleted_count > 0:
+            await event.reply(f"User {target_user_id} has been removed from the authorized list.")
+        else:
+            await event.reply(f"User {target_user_id} was not found in the authorized list.")
+    except ValueError:
+        await event.reply("Invalid user ID format. Please use a numeric user ID.")
+    except Exception as e:
+        await event.reply(f"An error occurred: {e}")
+        
+
 @bot.on(events.NewMessage)
 async def process_input(event):
     """Processes user input for account hosting or forwarding."""
