@@ -1,186 +1,189 @@
 import os
-import json
-import psutil
 import asyncio
 from telethon import TelegramClient, events
-from telethon.errors import SessionPasswordNeededError
-from telethon.tl.functions.channels import LeaveChannelRequest
-from telethon.tl.functions.messages import GetHistoryRequest
-from telethon.tl.types import PeerUser
-from colorama import init, Fore
-import pyfiglet
-
-# Configuration
-BOT_TOKEN = "YOUR_BOT_TOKEN"
-API_ID = "YOUR_API_ID"
-API_HASH = "YOUR_API_HASH"
-SESSIONS_FOLDER = "sessions"
+from telethon.errors import FloodWaitError
+from colorama import init
+import random
 
 # Initialize colorama for colored output
 init(autoreset=True)
 
-# Ensure sessions folder exists
-if not os.path.exists(SESSIONS_FOLDER):
-    os.mkdir(SESSIONS_FOLDER)
+# Replace with your API credentials
+USER_API_ID = "26416419"
+USER_API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"
+BOT_API_TOKEN = "7226701592:AAE7AGWAU0BXgw-PmLfhgarpCT4-2wrBdwE"
 
-# Initialize the bot
-bot = TelegramClient("bot", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+CREDENTIALS_FOLDER = 'sessions'
 
-# In-memory storage for hosted accounts
-hosted_accounts = {}
+# Create sessions folder if it doesn't exist
+if not os.path.exists(CREDENTIALS_FOLDER):
+    os.mkdir(CREDENTIALS_FOLDER)
 
-# Save account credentials
-def save_account(session_name, api_id, api_hash, phone_number):
-    data = {
-        "api_id": api_id,
-        "api_hash": api_hash,
-        "phone_number": phone_number
-    }
-    with open(f"{SESSIONS_FOLDER}/{session_name}.json", "w") as f:
-        json.dump(data, f)
+# Initialize Telegram bot
+bot = TelegramClient('bot_session', USER_API_ID, USER_API_HASH)
 
-# Load account credentials
-def load_account(session_name):
-    try:
-        with open(f"{SESSIONS_FOLDER}/{session_name}.json", "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return None
+# User states to track ongoing processes
+user_states = {}
+accounts = {}  # Hosted accounts
 
-# Get server stats
-def get_server_stats():
-    cpu_usage = psutil.cpu_percent(interval=1)
-    memory = psutil.virtual_memory()
-    memory_usage = memory.percent
-    return f"CPU Usage: {cpu_usage}%\nMemory Usage: {memory_usage}%"
+@bot.on(events.NewMessage(pattern='/start'))
+async def start(event):
+    """Welcome message for users."""
+    await event.reply("Welcome! Use the following commands:\n\n"
+                      "/host - Host a new Telegram account\n"
+                      "/forward - Start forwarding ads\n"
+                      "/accounts - List hosted accounts\n"
+                      "/remove - Remove a hosted account")
 
-# Function to display banner
-def display_banner():
-    print(Fore.RED + pyfiglet.figlet_format("LEGITDEALS9"))
-    print(Fore.GREEN + "Made by @Legitdeals9\n")
-
-# Command: /host
-@bot.on(events.NewMessage(pattern="/host"))
-async def host_account(event):
-    args = event.raw_text.split()
-    if len(args) != 4:
-        await event.reply("Usage: /host <session_name> <api_id> <api_hash> <phone_number>")
-        return
-
-    session_name, api_id, api_hash, phone_number = args[1], args[2], args[3], args[4]
-
-    if session_name in hosted_accounts:
-        await event.reply(f"Session {session_name} is already hosted.")
-        return
-
-    client = TelegramClient(f"{SESSIONS_FOLDER}/{session_name}", int(api_id), api_hash)
-    try:
-        await client.start(phone=phone_number)
-        if not await client.is_user_authorized():
-            await client.send_code_request(phone_number)
-            await event.reply("Enter the code sent to the account:")
-
-            @bot.on(events.NewMessage(from_user=event.sender_id))
-            async def handle_code_response(code_event):
-                try:
-                    await client.sign_in(phone_number, code_event.raw_text)
-                    hosted_accounts[session_name] = client
-                    save_account(session_name, api_id, api_hash, phone_number)
-                    await code_event.reply(f"Account {session_name} hosted successfully!")
-                except Exception as e:
-                    await code_event.reply(f"Failed to authenticate: {str(e)}")
-                finally:
-                    bot.remove_event_handler(handle_code_response)
-
+# /host command: Starts the hosting process for a new account
+@bot.on(events.NewMessage(pattern='/host|/addaccount'))
+async def host_command(event):
+    """Starts the hosting process for a new account."""
+    user_id = event.sender_id
+    if user_id in user_states:
+        if user_states[user_id].get('step') in ['awaiting_credentials', 'awaiting_otp']:
+            await event.reply("You already have an active process. Please complete it before starting a new one.")
         else:
-            hosted_accounts[session_name] = client
-            save_account(session_name, api_id, api_hash, phone_number)
-            await event.reply(f"Account {session_name} hosted successfully!")
-    except Exception as e:
-        await event.reply(f"Failed to host account: {str(e)}")
-
-# Command: /remove
-@bot.on(events.NewMessage(pattern="/remove"))
-async def remove_account(event):
-    args = event.raw_text.split()
-    if len(args) != 2:
-        await event.reply("Usage: /remove <session_name>")
-        return
-
-    session_name = args[1]
-    if session_name not in hosted_accounts:
-        await event.reply(f"Session {session_name} is not hosted.")
-        return
-
-    client = hosted_accounts.pop(session_name)
-    await client.disconnect()
-    os.remove(f"{SESSIONS_FOLDER}/{session_name}.json")
-    await event.reply(f"Account {session_name} removed successfully.")
-
-# Command: /accounts
-@bot.on(events.NewMessage(pattern="/accounts"))
-async def list_accounts(event):
-    if not hosted_accounts:
-        await event.reply("No accounts are currently hosted.")
+            del user_states[user_id]  # Remove any old process state
+            await event.reply("You can start hosting a new account now.")
     else:
-        accounts = "\n".join(hosted_accounts.keys())
-        await event.reply(f"Hosted accounts:\n{accounts}")
+        user_states[user_id] = {'step': 'awaiting_credentials'}
+        await event.reply("Send your API ID, API Hash, and phone number in the format:\n`API_ID|API_HASH|PHONE_NUMBER`")
 
-# Command: /stats
-@bot.on(events.NewMessage(pattern="/stats"))
-async def server_stats(event):
-    stats = get_server_stats()
-    await event.reply(f"Server Stats:\n{stats}")
-
-# Command: /forward
-@bot.on(events.NewMessage(pattern="/forward"))
-async def forward_ads(event):
-    args = event.raw_text.split()
-    if len(args) != 1:
-        await event.reply("Usage: /forward")
+# /forward command: Starts the ad forwarding process
+@bot.on(events.NewMessage(pattern='/forward'))
+async def forward_command(event):
+    """Starts the ad forwarding process."""
+    user_id = event.sender_id
+    if user_id in user_states:
+        await event.reply("You already have an active process. Please complete it before starting a new one.")
         return
 
-    session_name = event.sender_id
-    if session_name not in hosted_accounts:
-        await event.reply("No hosted session found. Use /host to host a session.")
+    if not accounts:
+        await event.reply("No accounts are hosted. Use /host or /addaccount to add accounts.")
         return
 
-    client = hosted_accounts[session_name]
+    user_states[user_id] = {'step': 'awaiting_message_count'}
+    await event.reply("How many messages would you like to forward per group (1-5)?")
 
-    saved_messages_peer = await client.get_input_entity("me")
-    history = await client(GetHistoryRequest(
-        peer=saved_messages_peer,
-        limit=5,  # Fetch up to 5 messages
-        offset_id=0,
-        offset_date=None,
-        add_offset=0,
-        max_id=0,
-        min_id=0,
-        hash=0
-    ))
-
-    if not history.messages:
-        await event.reply("No messages found in 'Saved Messages'.")
+@bot.on(events.NewMessage)
+async def process_input(event):
+    """Processes user input for account hosting or forwarding."""
+    user_id = event.sender_id
+    if user_id not in user_states:
         return
 
-    ads = history.messages[:5]
+    state = user_states[user_id]
 
-    repeat_count = int(await event.reply("How many rounds do you want to forward messages?").raw_text)
-    delay_between_rounds = int(await event.reply("Enter delay (seconds) between rounds:").raw_text)
+    # Handling user credentials for hosting a new account
+    if state['step'] == 'awaiting_credentials':
+        data = event.text.split('|')
+        if len(data) != 3:
+            await event.reply("Invalid format. Please send data as:\n`API_ID|API_HASH|PHONE_NUMBER`")
+            return
 
-    for round_num in range(repeat_count):
-        for message in ads:
+        api_id, api_hash, phone_number = data
+        session_name = f"{CREDENTIALS_FOLDER}/session_{user_id}_{phone_number}"
+        client = TelegramClient(session_name, api_id, api_hash)
+
+        try:
+            await client.connect()
+            if not await client.is_user_authorized():
+                await client.send_code_request(phone_number)
+                state.update({'step': 'awaiting_otp', 'client': client, 'phone_number': phone_number})
+                await event.reply("OTP sent to your phone. Reply with the OTP.")
+            else:
+                accounts[phone_number] = client
+                await client.disconnect()
+                await event.reply(f"Account {phone_number} is already authorized and hosted!")
+                del user_states[user_id]  # Clear user state after completing hosting
+
+                # Ask for the next account info
+                await event.reply("Send the next account's details in the format:\n`API_ID|API_HASH|PHONE_NUMBER`")
+
+        except Exception as e:
+            await event.reply(f"Error: {e}")
+            del user_states[user_id]  # Clear user state if error occurs
+
+    # OTP Verification
+    elif state['step'] == 'awaiting_otp':
+        otp = event.text.strip()
+        client = state['client']
+        phone_number = state['phone_number']
+
+        try:
+            await client.sign_in(phone_number, otp)
+            accounts[phone_number] = client
+            await event.reply(f"Account {phone_number} successfully hosted! Use /forward to start forwarding ads.")
+            del user_states[user_id]  # Clear user state after OTP verification
+
+            # Ask for the next account info
+            await event.reply("Send the next account's details in the format:\n`API_ID|API_HASH|PHONE_NUMBER`")
+        except Exception as e:
+            await event.reply(f"Error: {e}")
+            del user_states[user_id]  # Clear user state if error occurs
+
+    # Handling forwarding process steps (message count, rounds, delay)
+    if state['step'] == 'awaiting_message_count':
+        try:
+            message_count = int(event.text.strip())
+            if 1 <= message_count <= 5:
+                state['message_count'] = message_count
+                state['step'] = 'awaiting_rounds'
+                await event.reply("How many rounds of ads would you like to run?")
+            else:
+                await event.reply("Please choose a number between 1 and 5.")
+        except ValueError:
+            await event.reply("Please provide a valid number.")
+
+    elif state['step'] == 'awaiting_rounds':
+        try:
+            rounds = int(event.text.strip())
+            state['rounds'] = rounds
+            state['step'] = 'awaiting_delay'
+            await event.reply("Enter delay (in seconds) between rounds.")
+        except ValueError:
+            await event.reply("Please provide a valid number.")
+
+    elif state['step'] == 'awaiting_delay':
+        try:
+            delay = int(event.text.strip())
+            state['delay'] = delay
+            await event.reply("Starting the ad forwarding process...")
+            await forward_ads(state['message_count'], state['rounds'], state['delay'])
+            del user_states[user_id]  # Clear user state after completing forwarding
+        except ValueError:
+            await event.reply("Please provide a valid number.")
+
+async def forward_ads(message_count, rounds, delay):
+    """Forwards ads to all groups for all hosted accounts."""
+    for phone_number, client in accounts.items():
+        await client.connect()
+        saved_messages = await client.get_messages('me', limit=message_count)
+        if not saved_messages or len(saved_messages) < message_count:
+            print(f"Not enough messages in 'Saved Messages' for account {phone_number}.")
+            continue
+
+        for round_num in range(1, rounds + 1):
+            print(f"Round {round_num} for account {phone_number}...")
             async for dialog in client.iter_dialogs():
                 if dialog.is_group:
-                    try:
-                        await client.forward_messages(dialog.entity, message)
-                        await asyncio.sleep(2)  # Small delay between groups
-                    except Exception as e:
-                        await event.reply(f"Failed to forward message to {dialog.entity.title}: {e}")
-        await asyncio.sleep(delay_between_rounds)
+                    group = dialog.entity
+                    for message in saved_messages:
+                        try:
+                            await client.forward_messages(group.id, message)
+                            print(f"Ad forwarded to {group.title} from account {phone_number}.")
+                            # Random delay between messages
+                            await asyncio.sleep(random.uniform(2, 4))
+                        except FloodWaitError as e:
+                            print(f"Rate limited. Waiting for {e.seconds} seconds.")
+                            await asyncio.sleep(e.seconds)
+                        except Exception as e:
+                            print(f"Failed to forward to {group.title}: {e}")
+            if round_num < rounds:
+                print(f"Waiting {delay} seconds before the next round...")
+                await asyncio.sleep(delay)
 
-    await event.reply("Forwarding completed.")
-
-# Run the bot
 print("Bot is running...")
+bot.start(bot_token=BOT_API_TOKEN)
 bot.run_until_disconnected()
