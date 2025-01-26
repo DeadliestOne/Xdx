@@ -1,199 +1,189 @@
+import os
+import asyncio
 from telethon import TelegramClient, events
-from telethon.tl.types import UserStatusOnline, UserStatusOffline, User
-from pymongo import MongoClient
-from datetime import datetime
-import requests
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
-API_ID = '26416419'
-API_HASH = 'c109c77f5823c847b1aeb7fbd4990cc4'
-PHONE_NUMBER = '+8801634532670'# Your Telegram account phone number
+from telethon.errors import FloodWaitError
+from colorama import init
+import random
 
-# Replace with your Telegram Bot Token and Chat ID
-BOT_TOKEN = "7941421820:AAHF7nB24H9ucSi-cwUfCqCS1DSH0LorDfs"
-CHAT_ID = "6748827895"  # Your Telegram user ID to receive notifications
+# Initialize colorama for colored output
+init(autoreset=True)
 
-# MongoDB configuration
-MONGO_URI = "mongodb+srv://jc07cv9k3k:bEWsTrbPgMpSQe2z@cluster0.nfbxb.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0/"
-client = MongoClient(MONGO_URI)
-db = client['online_status_bot']
-tracked_users = db['tracked_users']  #  Collection  to store tracking information
+# Replace with your API credentials
+USER_API_ID = "26416419"
+USER_API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"
+BOT_API_TOKEN = "7226701592:AAE7AGWAU0BXgw-PmLfhgarpCT4-2wrBdwE"
 
-# Initialize Telethon client
-telegram_client = TelegramClient('user_session', API_ID, API_HASH)
+CREDENTIALS_FOLDER = 'sessions'
 
-# Initialize Telegram bot using python-telegram-bot v20
-application = Application.builder().token(BOT_TOKEN).build()
+# Create sessions folder if it doesn't exist
+if not os.path.exists(CREDENTIALS_FOLDER):
+    os.mkdir(CREDENTIALS_FOLDER)
 
-async def send_bot_message(message):
-    """Send a message via Telegram Bot."""
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": message}
-    try:
-        response = requests.post(url, data=payload)
-        if response.status_code == 200:
-            print(f"Message sent: {message}")
+# Initialize Telegram bot
+bot = TelegramClient('bot_session', USER_API_ID, USER_API_HASH)
+
+# User states to track ongoing processes
+user_states = {}
+accounts = {}  # Hosted accounts
+
+@bot.on(events.NewMessage(pattern='/start'))
+async def start(event):
+    """Welcome message for users."""
+    await event.reply("Welcome! Use the following commands:\n\n"
+                      "/host - Host a new Telegram account\n"
+                      "/forward - Start forwarding ads\n"
+                      "/accounts - List hosted accounts\n"
+                      "/remove - Remove a hosted account")
+
+# /host command: Starts the hosting process for a new account
+@bot.on(events.NewMessage(pattern='/host|/addaccount'))
+async def host_command(event):
+    """Starts the hosting process for a new account."""
+    user_id = event.sender_id
+    if user_id in user_states:
+        if user_states[user_id].get('step') in ['awaiting_credentials', 'awaiting_otp']:
+            await event.reply("You already have an active process. Please complete it before starting a new one.")
         else:
-            print(f"Failed to send message. Response: {response.text}")
-    except Exception as e:
-        print(f"Error while sending message: {e}")
+            del user_states[user_id]  # Remove any old process state
+            await event.reply("You can start hosting a new account now.")
+    else:
+        user_states[user_id] = {'step': 'awaiting_credentials'}
+        await event.reply("Send your API ID, API Hash, and phone number in the format:\n`API_ID|API_HASH|PHONE_NUMBER`")
 
-async def add_user_to_track(username):
-    """Add a user to track."""
-    try:
-        user = await telegram_client.get_entity(username)
-        
-        # Ensure it's a user, not a channel or group
-        if isinstance(user, User):  # Check if the entity is a user
-            # Check if the user is already in the tracking list
-            if not tracked_users.find_one({"id": user.id}):
-                tracked_users.insert_one({
-                    "id": user.id,
-                    "username": username,
-                    "online_logs": [],
-                })
-                return f"Started tracking @{username}."
+# /forward command: Starts the ad forwarding process
+@bot.on(events.NewMessage(pattern='/forward'))
+async def forward_command(event):
+    """Starts the ad forwarding process."""
+    user_id = event.sender_id
+    if user_id in user_states:
+        await event.reply("You already have an active process. Please complete it before starting a new one.")
+        return
+
+    if not accounts:
+        await event.reply("No accounts are hosted. Use /host or /addaccount to add accounts.")
+        return
+
+    user_states[user_id] = {'step': 'awaiting_message_count'}
+    await event.reply("How many messages would you like to forward per group (1-5)?")
+
+@bot.on(events.NewMessage)
+async def process_input(event):
+    """Processes user input for account hosting or forwarding."""
+    user_id = event.sender_id
+    if user_id not in user_states:
+        return
+
+    state = user_states[user_id]
+
+    # Handling user credentials for hosting a new account
+    if state['step'] == 'awaiting_credentials':
+        data = event.text.split('|')
+        if len(data) != 3:
+            await event.reply("Invalid format. Please send data as:\n`API_ID|API_HASH|PHONE_NUMBER`")
+            return
+
+        api_id, api_hash, phone_number = data
+        session_name = f"{CREDENTIALS_FOLDER}/session_{user_id}_{phone_number}"
+        client = TelegramClient(session_name, api_id, api_hash)
+
+        try:
+            await client.connect()
+            if not await client.is_user_authorized():
+                await client.send_code_request(phone_number)
+                state.update({'step': 'awaiting_otp', 'client': client, 'phone_number': phone_number})
+                await event.reply("OTP sent to your phone. Reply with the OTP.")
             else:
-                return f"User @{username} is already being tracked."
-        else:
-            return f"@{username} is not a valid user. Please provide a valid username."
-    
-    except Exception as e:
-        return f"Error adding user: {e}"
+                accounts[phone_number] = client
+                await client.disconnect()
+                await event.reply(f"Account {phone_number} is already authorized and hosted!")
+                del user_states[user_id]  # Clear user state after completing hosting
 
-@telegram_client.on(events.UserUpdate)
-async def handle_user_update(event):
-    """Handle online/offline updates for tracked users."""
-    if event.user_id:
-        try:
-            user = await telegram_client.get_entity(event.user_id)
+                # Ask for the next account info
+                await event.reply("Send the next account's details in the format:\n`API_ID|API_HASH|PHONE_NUMBER`")
 
-            # Only proceed if the entity is a user
-            if isinstance(user, User):
-                tracked_user = tracked_users.find_one({"id": user.id})
-
-                if tracked_user:
-                    now = datetime.utcnow()
-                    if isinstance(user.status, UserStatusOnline):
-                        log = f"{user.username} is online at {now.strftime('%Y-%m-%d %H:%M:%S')}."
-                        print(log)
-                        tracked_users.update_one(
-                            {"id": user.id},
-                            {"$push": {"online_logs": {"status": "online", "time": now}}}
-                        )
-                        await send_bot_message(log)
-                    elif isinstance(user.status, UserStatusOffline):
-                        log = f"{user.username} is offline at {now.strftime('%Y-%m-%d %H:%M:%S')}."
-                        print(log)
-                        tracked_users.update_one(
-                            {"id": user.id},
-                            {"$push": {"online_logs": {"status": "offline", "time": now}}}
-                        )
-                        await send_bot_message(log)
         except Exception as e:
-            print(f"Error while processing user update: {e}")
+            await event.reply(f"Error: {e}")
+            del user_states[user_id]  # Clear user state if error occurs
 
-async def fetch_user_status(username):
-    """Fetch the online status logs of a user."""
-    try:
-        user = tracked_users.find_one({"username": username})
-        if not user:
-            return f"No tracking data found for @{username}."
-        
-        logs = user.get("online_logs", [])
-        if not logs:
-            return f"No activity logs found for @{username}."
-        
-        report = [f"Activity logs for @{username}:"]
-        for log in logs:
-            status = log["status"]
-            time = log["time"].strftime("%Y-%m-%d %H:%M:%S")
-            report.append(f"{status.title()} at {time}")
-        return "\n".join(report)
-    except Exception as e:
-        return f"Error fetching logs for @{username}: {e}"
+    # OTP Verification
+    elif state['step'] == 'awaiting_otp':
+        otp = event.text.strip()
+        client = state['client']
+        phone_number = state['phone_number']
 
-# Command to notice a user and start tracking
-async def notice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Add a user to track."""
-    try:
-        if context.args:
-            username = context.args[0]
-            response = await add_user_to_track(username)
-            await update.message.reply_text(response)
-        else:
-            await update.message.reply_text("Please provide a username to track.")
-    except Exception as e:
-        await update.message.reply_text(f"Error: {e}")
-
-# Command to fetch user logs
-async def fetch(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Fetch user activity logs."""
-    try:
-        if context.args:
-            username = context.args[0]
-            response = await fetch_user_status(username)
-            await update.message.reply_text(response)
-        else:
-            await update.message.reply_text("Please provide a username to fetch logs.")
-    except Exception as e:
-        await update.message.reply_text(f"Error: {e}")
-
-# Add command handlers to the bot
-application.add_handler(CommandHandler("notice", notice))
-application.add_handler(CommandHandler("fetch", fetch))
-
-async def monitor_and_start_tracking():
-    """Start tracking users' current status when the bot starts."""
-    tracked_usernames = ["@your_ishani"]  # Add usernames to track
-
-    for username in tracked_usernames:
-        response = await add_user_to_track(username)
-        print(response)
-
-    # Fetch initial status for all tracked users
-    for username in tracked_usernames:
         try:
-            user = await telegram_client.get_entity(username)
-            tracked_user = tracked_users.find_one({"id": user.id})
-            if tracked_user:
-                status = user.status
-                now = datetime.utcnow()
-                if isinstance(status, UserStatusOnline):
-                    log = f"{user.username} was online at {now.strftime('%Y-%m-%d %H:%M:%S')}."
-                    tracked_users.update_one(
-                        {"id": user.id},
-                        {"$push": {"online_logs": {"status": "online", "time": now}}}
-                    )
-                elif isinstance(status, UserStatusOffline):
-                    log = f"{user.username} was offline at {now.strftime('%Y-%m-%d %H:%M:%S')}."
-                    tracked_users.update_one(
-                        {"id": user.id},
-                        {"$push": {"online_logs": {"status": "offline", "time": now}}}
-                    )
-                await send_bot_message(log)
+            await client.sign_in(phone_number, otp)
+            accounts[phone_number] = client
+            await event.reply(f"Account {phone_number} successfully hosted! Use /forward to start forwarding ads.")
+            del user_states[user_id]  # Clear user state after OTP verification
+
+            # Ask for the next account info
+            await event.reply("Send the next account's details in the format:\n`API_ID|API_HASH|PHONE_NUMBER`")
         except Exception as e:
-            print(f"Error while tracking {username}: {e}")
+            await event.reply(f"Error: {e}")
+            del user_states[user_id]  # Clear user state if error occurs
 
-async def main():
-    """Main logic."""
-    try:
-        # Start the Telethon client
-        await telegram_client.start(PHONE_NUMBER)
-        print("Telegram Client has started.")
-        
-        # Start monitoring and tracking user statuses
-        await monitor_and_start_tracking()
+    # Handling forwarding process steps (message count, rounds, delay)
+    if state['step'] == 'awaiting_message_count':
+        try:
+            message_count = int(event.text.strip())
+            if 1 <= message_count <= 5:
+                state['message_count'] = message_count
+                state['step'] = 'awaiting_rounds'
+                await event.reply("How many rounds of ads would you like to run?")
+            else:
+                await event.reply("Please choose a number between 1 and 5.")
+        except ValueError:
+            await event.reply("Please provide a valid number.")
 
-        # Start the bot to handle Telegram commands
-        await application.initialize()
-        await application.start_polling()
+    elif state['step'] == 'awaiting_rounds':
+        try:
+            rounds = int(event.text.strip())
+            state['rounds'] = rounds
+            state['step'] = 'awaiting_delay'
+            await event.reply("Enter delay (in seconds) between rounds.")
+        except ValueError:
+            await event.reply("Please provide a valid number.")
 
-        # Keep the client running to monitor status
-        await telegram_client.run_until_disconnected()
-    except Exception as e:
-        print(f"Error during bot execution: {e}")
+    elif state['step'] == 'awaiting_delay':
+        try:
+            delay = int(event.text.strip())
+            state['delay'] = delay
+            await event.reply("Starting the ad forwarding process...")
+            await forward_ads(state['message_count'], state['rounds'], state['delay'])
+            del user_states[user_id]  # Clear user state after completing forwarding
+        except ValueError:
+            await event.reply("Please provide a valid number.")
 
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+async def forward_ads(message_count, rounds, delay):
+    """Forwards ads to all groups for all hosted accounts."""
+    for phone_number, client in accounts.items():
+        await client.connect()
+        saved_messages = await client.get_messages('me', limit=message_count)
+        if not saved_messages or len(saved_messages) < message_count:
+            print(f"Not enough messages in 'Saved Messages' for account {phone_number}.")
+            continue
+
+        for round_num in range(1, rounds + 1):
+            print(f"Round {round_num} for account {phone_number}...")
+            async for dialog in client.iter_dialogs():
+                if dialog.is_group:
+                    group = dialog.entity
+                    for message in saved_messages:
+                        try:
+                            await client.forward_messages(group.id, message)
+                            print(f"Ad forwarded to {group.title} from account {phone_number}.")
+                            # Random delay between messages
+                            await asyncio.sleep(random.uniform(2, 4))
+                        except FloodWaitError as e:
+                            print(f"Rate limited. Waiting for {e.seconds} seconds.")
+                            await asyncio.sleep(e.seconds)
+                        except Exception as e:
+                            print(f"Failed to forward to {group.title}: {e}")
+            if round_num < rounds:
+                print(f"Waiting {delay} seconds before the next round...")
+                await asyncio.sleep(delay)
+
+print("Bot is running...")
+bot.start(bot_token=BOT_API_TOKEN)
+bot.run_until_disconnected()
