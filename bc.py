@@ -23,7 +23,7 @@ if not os.path.exists(CREDENTIALS_FOLDER):
 bot = TelegramClient('bot_session', USER_API_ID, USER_API_HASH)
 
 # Define the bot owner and allowed users
-OWNER_ID = 123456789  # Replace with the owner user ID
+OWNER_ID = 6748827895  # Replace with the owner user ID
 ALLOWED_USERS = set([OWNER_ID])  # Initially allow only the owner
 
 # User states to track ongoing processes
