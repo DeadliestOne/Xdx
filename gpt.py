@@ -1,124 +1,60 @@
 import logging
 from pyrogram import Client, filters
-from pyrogram.errors import SessionPasswordNeeded
 
-# Bot credentials (replace with your own)
-API_ID = 26416419
+# Bot credentials
+API_ID = "26416419"
 API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"
-BOT_TOKEN = "8031831989:AAH8H2ZuKhMukDZ9cWG2Kgm18hEx835jb48"  # Replace with your bot's token
+BOT_TOKEN = "8031831989:AAH8H2ZuKhMukDZ9cWG2Kgm18hEx835jb48"
 
-# Setup logging to suppress unwanted output
-logging.basicConfig(level=logging.ERROR)  # Suppress INFO/DEBUG logs
-logger = logging.getLogger("pyrogram")
-logger.setLevel(logging.ERROR)  # This ensures Pyrogram's logs are suppressed
+# Setup logging for debugging
+logging.basicConfig(level=logging.INFO)
 
-# Initialize the Pyrogram client (bot)
-bot = Client("account_hoster_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+# Initialize the bot client
+bot = Client("bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-# Define a state to track user progress (we'll keep this simple)
-user_sessions = {}
-
+# /start command for the bot
 @bot.on_message(filters.command("start"))
-async def start_message(client, message):
-    await message.reply("Welcome to the Account Hoster Bot! Please use /host to begin the login process.")
+async def start(client, message):
+    await message.reply("Welcome! Please send your string session to login.")
 
-@bot.on_message(filters.command("host"))
-async def host_account(client, message):
-    user_id = message.from_user.id
-    if user_id in user_sessions:
-        await message.reply("You already have an active session!")
+# /setsession command to set the string session and log in
+@bot.on_message(filters.command("setsession"))
+async def set_session(client, message):
+    string_session = message.text.replace("/setsession", "").strip()
+
+    if not string_session:
+        await message.reply("Please provide a valid string session.")
         return
 
-    # Start the hosting process
-    user_sessions[user_id] = {"step": "waiting_for_phone"}
-    await message.reply("Please send your phone number (with country code):")
+    # Try logging in with the provided string session
+    user_client = Client("user_session", api_id=API_ID, api_hash=API_HASH, session_string=string_session)
 
-@bot.on_message(filters.text)
-async def handle_input(client, message):
-    user_id = message.from_user.id
-    if user_id not in user_sessions:
-        return
+    try:
+        await user_client.connect()
+        await message.reply("Successfully logged in with the provided string session!")
 
-    step = user_sessions[user_id]["step"]
+        # After successful login, ask for group links
+        await message.reply("Now, please send the group links (separated by commas) to join:")
 
-    # Step 1: Get phone number
-    if step == "waiting_for_phone":
-        phone = message.text.strip()
-        user_sessions[user_id]["phone"] = phone  # Save phone number to session
-        user_sessions[user_id]["step"] = "waiting_for_api_id"
-        await message.reply("Please send your API ID:")
+        # Wait for group links input
+        group_msg = await bot.listen(message.chat.id)
+        group_links = [link.strip() for link in group_msg.text.split(",")]
 
-    # Step 2: Get API ID
-    elif step == "waiting_for_api_id":
-        try:
-            user_sessions[user_id]["api_id"] = int(message.text.strip())
-            user_sessions[user_id]["step"] = "waiting_for_api_hash"
-            await message.reply("Please send your API Hash:")
-        except ValueError:
-            await message.reply("Invalid API ID! Please send a valid API ID:")
-
-    # Step 3: Get API Hash
-    elif step == "waiting_for_api_hash":
-        user_sessions[user_id]["api_hash"] = message.text.strip()
-        user_sessions[user_id]["step"] = "waiting_for_otp"
-        await message.reply("Thank you! Now, I will send an OTP to your phone number. Please wait...")
-
-        # Initialize the user client for login
-        phone = user_sessions[user_id]["phone"]
-        api_id = user_sessions[user_id]["api_id"]
-        api_hash = user_sessions[user_id]["api_hash"]
-
-        user_client = Client("user_session", api_id=api_id, api_hash=api_hash)
-
-        try:
-            await user_client.connect()
-
-            # Attempt to send OTP (start the sign-in process)
-            await user_client.send_code(phone)
-            user_sessions[user_id]["user_client"] = user_client
-            user_sessions[user_id]["step"] = "waiting_for_otp"
-            await message.reply("OTP sent! Please enter the OTP you received:")
-
-        except Exception as e:
-            await message.reply(f"Error sending OTP: {str(e)}")
-            del user_sessions[user_id]
-            await user_client.disconnect()
-
-    # Step 4: Get OTP and log in
-    elif step == "waiting_for_otp":
-        otp = message.text.strip()
-        user_client = user_sessions[user_id].get("user_client")
-
-        if user_client:
+        for link in group_links:
+            group_username = link.split("/")[-1] if "t.me" in link else link.strip("@")
             try:
-                # Log in using OTP
-                await user_client.sign_in(phone, otp)
-                await message.reply("Successfully logged in!")
-                del user_sessions[user_id]
-                await user_client.disconnect()
-
-            except SessionPasswordNeeded:
-                await message.reply("Two-step verification enabled. Please enter your password:")
-                user_sessions[user_id]["step"] = "waiting_for_password"
+                # Try joining the group using the string session
+                await user_client.join_chat(group_username)
+                await message.reply(f"Successfully joined: {group_username}")
             except Exception as e:
-                await message.reply(f"Login failed: {str(e)}")
-                del user_sessions[user_id]
-                await user_client.disconnect()
+                await message.reply(f"Failed to join {group_username}: {e}")
 
-    # Step 5: Handle password if 2FA is enabled
-    elif step == "waiting_for_password":
-        password = message.text.strip()
-        user_client = user_sessions[user_id].get("user_client")
+        # Disconnect the user client after finishing
+        await user_client.disconnect()
 
-        try:
-            await user_client.sign_in(password=password)
-            await message.reply("Successfully logged in after password verification!")
-            del user_sessions[user_id]
-            await user_client.disconnect()
-        except Exception as e:
-            await message.reply(f"Password verification failed: {str(e)}")
-            del user_sessions[user_id]
-            await user_client.disconnect()
+    except Exception as e:
+        await message.reply(f"Login failed: {e}")
+        return
 
 # Run the bot
 bot.run()
