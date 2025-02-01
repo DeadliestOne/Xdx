@@ -39,10 +39,7 @@ async def set_session(client, message):
         # Save the user client session for future use
         user_sessions[user_id] = {"user_client": user_client, "step": "logged_in"}
         
-        await message.reply("Successfully logged in with the provided string session!")
-
-        # Ask for the group links to join
-        await message.reply("Please send the group links (separated by commas or newlines) to join:")
+        await message.reply("Successfully logged in with the provided string session! You can now provide group links to join.")
 
     except Exception as e:
         await message.reply(f"Failed to log in with the provided session string: {str(e)}")
@@ -53,47 +50,41 @@ async def handle_input(client, message):
     if user_id not in user_sessions:
         return
 
-    step = user_sessions[user_id]["step"]
-
     # If the user is logged in, proceed to group joining
-    if step == "logged_in":
-        group_links = message.text.splitlines()  # Split by newlines to handle multi-line input
-        group_links = [link.strip() for link in group_links if link.strip()]
+    group_links = message.text.splitlines()  # Split by newlines to handle multi-line input
+    group_links = [link.strip() for link in group_links if link.strip()]
 
-        # Ensure we don't exceed 2,000 groups
-        if len(group_links) > 2000:
-            await message.reply("You can't join more than 2,000 groups at once.")
-            return
+    # Ensure we don't exceed 2,000 groups
+    if len(group_links) > 2000:
+        await message.reply("You can't join more than 2,000 groups at once.")
+        return
 
-        for link in group_links:
+    user_client = user_sessions[user_id]["user_client"]
+
+    for link in group_links:
+        group_username = None
+        try:
             # Handle both public group usernames and private invite links
-            group_username = None
-            try:
-                # If the link is a t.me link, extract the group username or invite link
-                if "t.me/" in link:
-                    if "+" in link:  # Private group invite link
-                        invite_link = link
-                        await message.reply(f"Attempting to join private group with invite link: {invite_link}")
-                        await user_sessions[user_id]["user_client"].join_chat(invite_link)
-                    else:  # Public group
-                        group_username = link.split("/")[-1]
-                        await message.reply(f"Attempting to join public group: @{group_username}")
-                        await user_sessions[user_id]["user_client"].join_chat(group_username)
-                else:
-                    # If it's just a username (e.g., @group)
-                    group_username = link
+            if "t.me/" in link:
+                if "+" in link:  # Private group invite link
+                    invite_link = link
+                    await message.reply(f"Attempting to join private group with invite link: {invite_link}")
+                    await user_client.join_chat(invite_link)
+                else:  # Public group
+                    group_username = link.split("/")[-1]
                     await message.reply(f"Attempting to join public group: @{group_username}")
-                    await user_sessions[user_id]["user_client"].join_chat(group_username)
-                
-                await message.reply(f"Successfully joined: {group_username if group_username else 'private group'}")
-            except PeerIdInvalid:
-                await message.reply(f"Failed to join {link}: Invalid group or invite link.")
-            except Exception as e:
-                await message.reply(f"Failed to join {link}: {str(e)}")
-        
-        # Optionally, you can disconnect after joining the groups
-        await user_sessions[user_id]["user_client"].disconnect()
-        del user_sessions[user_id]  # Clear session data for this user
+                    await user_client.join_chat(group_username)
+            else:
+                # If it's just a username (e.g., @group)
+                group_username = link
+                await message.reply(f"Attempting to join public group: @{group_username}")
+                await user_client.join_chat(group_username)
+            
+            await message.reply(f"Successfully joined: {group_username if group_username else 'private group'}")
+        except PeerIdInvalid:
+            await message.reply(f"Failed to join {link}: Invalid group or invite link.")
+        except Exception as e:
+            await message.reply(f"Failed to join {link}: {str(e)}")
 
 # Run the bot
 bot.run()
