@@ -1,6 +1,6 @@
 import logging
 from pyrogram import Client, filters
-from pyrogram.errors import SessionPasswordNeeded
+from pyrogram.errors import SessionPasswordNeeded, PeerIdInvalid
 
 # Bot credentials (replace with your own)
 API_ID = 26416419
@@ -42,7 +42,7 @@ async def set_session(client, message):
         await message.reply("Successfully logged in with the provided string session!")
 
         # Ask for the group links to join
-        await message.reply("Please send the group links (separated by commas) to join:")
+        await message.reply("Please send the group links (separated by commas or newlines) to join:")
 
     except Exception as e:
         await message.reply(f"Failed to log in with the provided session string: {str(e)}")
@@ -57,16 +57,39 @@ async def handle_input(client, message):
 
     # If the user is logged in, proceed to group joining
     if step == "logged_in":
-        group_links = message.text.split(",")
+        group_links = message.text.splitlines()  # Split by newlines to handle multi-line input
+        group_links = [link.strip() for link in group_links if link.strip()]
+
+        # Ensure we don't exceed 2,000 groups
+        if len(group_links) > 2000:
+            await message.reply("You can't join more than 2,000 groups at once.")
+            return
+
         for link in group_links:
-            group_username = link.split("/")[-1] if "t.me" in link else link.strip("@")
+            # Handle both public group usernames and private invite links
+            group_username = None
             try:
-                # Join the group using the string session
-                user_client = user_sessions[user_id]["user_client"]
-                await user_client.join_chat(group_username)
-                await message.reply(f"Successfully joined: {group_username}")
+                # If the link is a t.me link, extract the group username or invite link
+                if "t.me/" in link:
+                    if "+" in link:  # Private group invite link
+                        invite_link = link
+                        await message.reply(f"Attempting to join private group with invite link: {invite_link}")
+                        await user_sessions[user_id]["user_client"].join_chat(invite_link)
+                    else:  # Public group
+                        group_username = link.split("/")[-1]
+                        await message.reply(f"Attempting to join public group: @{group_username}")
+                        await user_sessions[user_id]["user_client"].join_chat(group_username)
+                else:
+                    # If it's just a username (e.g., @group)
+                    group_username = link
+                    await message.reply(f"Attempting to join public group: @{group_username}")
+                    await user_sessions[user_id]["user_client"].join_chat(group_username)
+                
+                await message.reply(f"Successfully joined: {group_username if group_username else 'private group'}")
+            except PeerIdInvalid:
+                await message.reply(f"Failed to join {link}: Invalid group or invite link.")
             except Exception as e:
-                await message.reply(f"Failed to join {group_username}: {e}")
+                await message.reply(f"Failed to join {link}: {str(e)}")
         
         # Optionally, you can disconnect after joining the groups
         await user_sessions[user_id]["user_client"].disconnect()
