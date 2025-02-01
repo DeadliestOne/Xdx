@@ -9,6 +9,8 @@ BOT_TOKEN = "8031831989:AAH8H2ZuKhMukDZ9cWG2Kgm18hEx835jb48"  # Replace with you
 
 # Setup logging to suppress unwanted output
 logging.basicConfig(level=logging.ERROR)  # Suppress INFO/DEBUG logs
+logger = logging.getLogger("pyrogram")
+logger.setLevel(logging.ERROR)  # This ensures Pyrogram's logs are suppressed
 
 # Initialize the Pyrogram client (bot)
 bot = Client("account_hoster_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
@@ -66,11 +68,12 @@ async def handle_input(client, message):
         api_hash = user_sessions[user_id]["api_hash"]
 
         user_client = Client("user_session", api_id=api_id, api_hash=api_hash)
-        await user_client.connect()
 
         try:
-            # Send OTP request
-            await user_client.send_code_request(phone)
+            await user_client.connect()
+
+            # Attempt to send OTP (start the sign-in process)
+            await user_client.send_code(phone)
             user_sessions[user_id]["user_client"] = user_client
             user_sessions[user_id]["step"] = "waiting_for_otp"
             await message.reply("OTP sent! Please enter the OTP you received:")
