@@ -1,8 +1,12 @@
 import logging
 import os
 import json
+from telethon import TelegramClient, errors
+from telethon.errors import SessionPasswordNeededError
+from telethon.tl.functions.messages import SendMessageRequest
+from telethon.tl.types import PeerUser
+from telethon.tl.functions.channels import LeaveChannelRequest
 from pyrogram import Client, filters
-from pyrogram.errors import SessionPasswordNeeded
 from pyrogram.types import Message
 
 # Setup logging for debugging
@@ -68,24 +72,31 @@ async def host_command(client, message: Message):
         }
         save_credentials(session_name, credentials)
 
-    # Create client instance
-    user_client = Client(session_name, api_id=api_id, api_hash=api_hash)
+    # Create Telethon client instance
+    user_client = TelegramClient(session_name, api_id=api_id, api_hash=api_hash)
 
     try:
         await user_client.connect()
+        
         # Check if user is authorized
         if not await user_client.is_user_authorized():
             await user_client.send_code_request(phone_number)
             await user_client.sign_in(phone_number)
 
         # Handle two-factor authentication
-        if user_client.is_authorized() is False:
+        if not await user_client.is_user_authorized():
             await message.reply("Two-factor authentication is enabled. Please enter your password:")
             password_msg = await bot.listen(message.chat.id)
             password = password_msg.text.strip()
             await user_client.sign_in(password=password)
 
         await message.reply("Successfully logged in!")
+
+    except SessionPasswordNeededError:
+        await message.reply("Two-factor authentication is enabled. Please enter your password:")
+        password_msg = await bot.listen(message.chat.id)
+        password = password_msg.text.strip()
+        await user_client.sign_in(password=password)
 
     except Exception as e:
         logger.error(f"Login failed: {e}")
