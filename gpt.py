@@ -3,7 +3,6 @@ import re
 from pyrogram import Client, filters
 from pyrogram.errors import SessionPasswordNeeded, FloodWait
 from pyrogram.types import Message
-from pyrogram.client import ConversationalBot
 
 # Setup logging for debugging
 logging.basicConfig(level=logging.DEBUG)
@@ -17,7 +16,7 @@ API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"  # Your API hash from my.telegram.
 # Store user session globally
 user_client = None
 user_states = {}  # Track user states during the hosting process
-ALLOWED_USERS = [6748827895]  # Replace with actual user IDs who are allowed to use the bot
+ALLOWED_USERS = [123456789]  # Replace with actual user IDs who are allowed to use the bot
 accounts = {}  # Store hosted accounts in a dictionary, indexed by phone numbers
 
 # Initialize the bot client
@@ -27,6 +26,7 @@ bot = Client("bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 # Function to prompt the user for their credentials
 async def prompt_credentials(message: Message):
     await message.reply("Send your API ID, API Hash, and phone number in the format:\n`API_ID|API_HASH|PHONE_NUMBER`")
+
 
 # /host command (modified)
 @bot.on_message(filters.command('host') | filters.command('addaccount'))
