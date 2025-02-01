@@ -1,25 +1,29 @@
 import re
 import asyncio
+import logging
 from pyrogram import Client, filters
-from pyrogram.errors import SessionPasswordNeeded
-from pyrogram.handlers import MessageHandler
+from pyrogram.errors import SessionPasswordNeeded, FloodWait
+
+# Enable logging for debugging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Your credentials
 BOT_TOKEN = "8031831989:AAH8H2ZuKhMukDZ9cWG2Kgm18hEx835jb48"
 
 # API credentials from my.telegram.org
 API_ID = 26416419
-API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"
-# Global variable to store the userbot session
+API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"# Replace with your API Hash
+
+# Global variable for user session
 user_client = None
 
-# Bot client (this is your bot that receives commands)
+# Bot client (this is your bot that listens for commands)
 bot = Client("bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-
-async def wait_for_reply(client: Client, chat_id: int, timeout: int = 60):
+async def wait_for_reply(client, chat_id, timeout=60):
     """
-    Wait for the next message from a specific chat and return it.
+    Waits for a reply message from the user in a chat and returns it.
     """
     loop = asyncio.get_event_loop()
     future = loop.create_future()
@@ -28,15 +32,16 @@ async def wait_for_reply(client: Client, chat_id: int, timeout: int = 60):
         if message.chat.id == chat_id:
             future.set_result(message)
 
-    # Create a handler that listens for messages in the given chat.
-    handler_instance = MessageHandler(handler, filters.chat(chat_id))
-    client.add_handler(handler_instance)
+    # Attach handler for message listening
+    client.add_handler(filters.chat(chat_id), handler)
+    
     try:
         message = await asyncio.wait_for(future, timeout=timeout)
     except asyncio.TimeoutError:
-        client.remove_handler(handler_instance)
-        raise Exception("Timed out waiting for a response.")
-    client.remove_handler(handler_instance)
+        client.remove_handler(handler)
+        raise Exception("❌ Timed out waiting for a response.")
+    
+    client.remove_handler(handler)
     return message
 
 
@@ -52,8 +57,9 @@ async def host(client, message):
         await message.reply("⚠️ A user session is already active!")
         return
 
-    # Ask for the phone number.
+    # Ask for the phone number
     await message.reply("📱 Enter your **phone number** (with country code, e.g., +123456789):")
+    
     try:
         phone_msg = await wait_for_reply(bot, message.chat.id)
     except Exception as e:
@@ -61,14 +67,17 @@ async def host(client, message):
         return
 
     phone_number = phone_msg.text.strip()
+    logger.info(f"Received phone number: {phone_number}")
 
-    # Initialize the userbot session.
+    # Initialize the userbot session
     user_client = Client("userbot", api_id=API_ID, api_hash=API_HASH)
     await user_client.connect()
 
     try:
-        # Send the code to the phone number and capture the sent code data.
+        logger.info("Connected to Telegram, sending OTP...")
         sent_code = await user_client.send_code(phone_number)
+        logger.info(f"OTP Sent! Phone Code Hash: {sent_code.phone_code_hash}")
+
         await message.reply("🔑 OTP has been sent! Please enter the **OTP** you received:")
 
         try:
@@ -76,9 +85,11 @@ async def host(client, message):
         except Exception as e:
             await message.reply(f"❌ Error: {e}")
             return
-        otp_code = otp_msg.text.strip()
 
-        # Pass the phone_code_hash from the sent_code when signing in.
+        otp_code = otp_msg.text.strip()
+        logger.info(f"Received OTP: {otp_code}")
+
+        # Log in with the phone code
         await user_client.sign_in(phone_number, otp_code, phone_code_hash=sent_code.phone_code_hash)
         await message.reply("✅ Userbot logged in successfully!\nNow use /join to add groups.")
     except SessionPasswordNeeded:
@@ -91,7 +102,10 @@ async def host(client, message):
         password = password_msg.text.strip()
         await user_client.check_password(password)
         await message.reply("✅ Userbot logged in successfully!\nNow use /join to add groups.")
+    except FloodWait as e:
+        await message.reply(f"🚨 Flood wait triggered! Try again after {e.value} seconds.")
     except Exception as e:
+        logger.error(f"Login failed: {e}")
         await message.reply(f"❌ Login Failed: {e}")
         user_client = None
 
@@ -110,11 +124,10 @@ async def join_groups(client, message):
         await message.reply(f"❌ Error: {e}")
         return
 
-    # Split the input into individual links.
+    # Split input into individual links
     group_links = [link.strip() for link in group_msg.text.split(",")]
 
     for link in group_links:
-        # Extract the group username from various link formats.
         match = re.search(r"(?:https?://)?t\.me/([\w_]+)", link)
         if match:
             group_username = match.group(1)
@@ -133,5 +146,5 @@ async def join_groups(client, message):
             await message.reply(f"❌ Invalid link format: {link}")
 
 
-# Start the bot.
+# Start the bot
 bot.run()
