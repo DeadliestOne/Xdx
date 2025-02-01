@@ -88,20 +88,21 @@ async def handle_input(client, message):
         otp = message.text.strip()
         user_client = user_sessions[user_id].get("user_client")
 
-        try:
-            # Log in using OTP
-            await user_client.sign_in(phone, otp)
-            await message.reply("Successfully logged in!")
-            del user_sessions[user_id]
-            await user_client.disconnect()
+        if user_client:
+            try:
+                # Log in using OTP
+                await user_client.sign_in(phone, otp)
+                await message.reply("Successfully logged in!")
+                del user_sessions[user_id]
+                await user_client.disconnect()
 
-        except SessionPasswordNeeded:
-            await message.reply("Two-step verification enabled. Please enter your password:")
-            user_sessions[user_id]["step"] = "waiting_for_password"
-        except Exception as e:
-            await message.reply(f"Login failed: {str(e)}")
-            del user_sessions[user_id]
-            await user_client.disconnect()
+            except SessionPasswordNeeded:
+                await message.reply("Two-step verification enabled. Please enter your password:")
+                user_sessions[user_id]["step"] = "waiting_for_password"
+            except Exception as e:
+                await message.reply(f"Login failed: {str(e)}")
+                del user_sessions[user_id]
+                await user_client.disconnect()
 
     # Step 5: Handle password if 2FA is enabled
     elif step == "waiting_for_password":
