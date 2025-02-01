@@ -25,7 +25,6 @@ async def wait_for_reply(client: Client, chat_id: int, timeout: int = 60):
     future = loop.create_future()
 
     async def handler(_client, message):
-        # Once a message from the chat is received, set the result
         if message.chat.id == chat_id:
             future.set_result(message)
 
@@ -68,9 +67,10 @@ async def host(client, message):
     await user_client.connect()
 
     try:
-        # Send the code to the phone number.
-        await user_client.send_code(phone_number)
+        # Send the code to the phone number and capture the sent code data.
+        sent_code = await user_client.send_code(phone_number)
         await message.reply("🔑 OTP has been sent! Please enter the **OTP** you received:")
+
         try:
             otp_msg = await wait_for_reply(bot, message.chat.id)
         except Exception as e:
@@ -78,7 +78,8 @@ async def host(client, message):
             return
         otp_code = otp_msg.text.strip()
 
-        await user_client.sign_in(phone_number, otp_code)
+        # Pass the phone_code_hash from the sent_code when signing in.
+        await user_client.sign_in(phone_number, otp_code, phone_code_hash=sent_code.phone_code_hash)
         await message.reply("✅ Userbot logged in successfully!\nNow use /join to add groups.")
     except SessionPasswordNeeded:
         await message.reply("⚠️ Two-Step Verification is enabled! Send your **password**:")
