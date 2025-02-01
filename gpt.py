@@ -1,4 +1,5 @@
 import re
+import asyncio
 from pyrogram import Client, filters
 from pyrogram.errors import SessionPasswordNeeded
 
@@ -17,31 +18,38 @@ bot = Client("bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
 @bot.on_message(filters.command("start"))
 async def start(bot, message):
-    await message.reply("Welcome! Use /host to log in as a user.")
+    await message.reply("👋 Welcome! Use /host to log in as a user.")
 
 @bot.on_message(filters.command("host"))
 async def host(bot, message):
     global user_client
     if user_client:
-        await message.reply("A user session is already active!")
+        await message.reply("⚠️ A user session is already active!")
         return
 
     # Step 1: Ask for the phone number
-    phone_number = await bot.ask(message.chat.id, "📱 Enter your **phone number** (with country code, e.g., +123456789):")
-    
+    await message.reply("📱 Enter your **phone number** (with country code, e.g., +123456789):")
+    phone_number = await bot.listen(message.chat.id)  # Wait for input
+    phone_number = phone_number.text.strip()
+
     # Initialize Userbot Session
     user_client = Client("userbot", api_id=API_ID, api_hash=API_HASH)
-    
+
     await user_client.connect()
     try:
-        sent_code = await user_client.send_code(phone_number.text.strip())
-        otp_code = await bot.ask(message.chat.id, "🔑 OTP has been sent! Please enter the **OTP** you received:")
+        sent_code = await user_client.send_code(phone_number)
+        
+        await message.reply("🔑 OTP has been sent! Please enter the **OTP** you received:")
+        otp_code = await bot.listen(message.chat.id)  # Wait for OTP input
+        otp_code = otp_code.text.strip()
 
-        await user_client.sign_in(phone_number.text.strip(), otp_code.text.strip())
+        await user_client.sign_in(phone_number, otp_code)
         await message.reply("✅ Userbot Logged in Successfully!\nNow use /join to add groups.")
     except SessionPasswordNeeded:
-        password_msg = await bot.ask(message.chat.id, "⚠️ Two-Step Verification is enabled! Send your **password**:")
-        await user_client.check_password(password_msg.text.strip())
+        await message.reply("⚠️ Two-Step Verification is enabled! Send your **password**:")
+        password_msg = await bot.listen(message.chat.id)  # Wait for password
+        password = password_msg.text.strip()
+        await user_client.check_password(password)
         await message.reply("✅ Userbot Logged in Successfully!\nNow use /join to add groups.")
     except Exception as e:
         await message.reply(f"❌ Login Failed: {e}")
@@ -55,9 +63,8 @@ async def join_groups(bot, message):
         return
 
     # Ask for group links
-    group_msg = await bot.ask(message.chat.id, "🔗 Send the **group links** separated by commas:")
-
-    # Process each link
+    await message.reply("🔗 Send the **group links** separated by commas:")
+    group_msg = await bot.listen(message.chat.id)
     group_links = [link.strip() for link in group_msg.text.split(",")]
 
     for link in group_links:
