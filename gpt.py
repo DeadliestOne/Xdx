@@ -107,8 +107,7 @@ async def handle_otp(client, message: Message):
 
     # Try signing in with OTP
     try:
-        await user_client.sign_in(message.text, otp_code, phone_code_hash=sent_code.phone_code_hash)
-
+        await user_client.sign_in(phone_number=message.text, otp_code=otp_code, phone_code_hash=sent_code.phone_code_hash)
         user_states[user_id]['step'] = 'logged_in'
         await message.reply("Successfully logged in! Now you can use /join to add groups.")
     except SessionPasswordNeeded:
