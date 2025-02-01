@@ -43,7 +43,8 @@ async def handle_input(client, message):
 
     # Step 1: Get phone number
     if step == "waiting_for_phone":
-        user_sessions[user_id]["phone"] = message.text.strip()
+        phone = message.text.strip()
+        user_sessions[user_id]["phone"] = phone  # Save phone number to session
         user_sessions[user_id]["step"] = "waiting_for_api_id"
         await message.reply("Please send your API ID:")
 
