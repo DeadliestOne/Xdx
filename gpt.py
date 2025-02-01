@@ -16,7 +16,7 @@ API_HASH = "c109c77f5823c847b1aeb7fbd4990cc4"  # Your API hash from my.telegram.
 # Store user session globally
 user_client = None
 user_states = {}  # Track user states during the hosting process
-ALLOWED_USERS = [6748827895]  # Replace with actual user IDs who are allowed to use the bot
+ALLOWED_USERS = [6748827895]  # Added your user ID to the allowed users list
 accounts = {}  # Store hosted accounts in a dictionary, indexed by phone numbers
 
 # Initialize the bot client
@@ -76,6 +76,8 @@ async def handle_credentials(client, message: Message):
     try:
         await user_client.connect()
         sent_code = await user_client.send_code(phone_number)
+        # Save the phone code hash for later use during login
+        user_states[user_id]['sent_code'] = sent_code
         user_states[user_id]['step'] = 'awaiting_otp'
 
         await message.reply("OTP sent! Please enter the OTP:")
@@ -96,9 +98,15 @@ async def handle_otp(client, message: Message):
     otp_code = message.text.strip()
     logger.info(f"Received OTP: {otp_code}")
 
+    # Get the sent_code (which contains the phone code hash)
+    sent_code = user_states[user_id].get('sent_code')
+
+    if not sent_code:
+        await message.reply("No OTP code sent. Please start the process again.")
+        return
+
     # Try signing in with OTP
     try:
-        sent_code = await user_client.send_code()
         await user_client.sign_in(message.text, otp_code, phone_code_hash=sent_code.phone_code_hash)
 
         user_states[user_id]['step'] = 'logged_in'
